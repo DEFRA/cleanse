@@ -35,9 +35,14 @@ internal static class Db
         public const string DeactivatedAtUtc = "deactivated_at_utc";
         public const string Version = "version";
 
-        public const string AllColumns =
-            $"{Id}, {GroupId}, {RuleId}, {RunId}, {Status}, {WorkflowStatus}, {AssignedTo}, {Notes}, " +
-            $"{ExternalNotes}, {Priority}, {ExternalReceivedAtUtc}, {SuppressionExpiresAtUtc}, " +
-            $"{Context}, {CreatedAtUtc}, {UpdatedAtUtc}, {ActivatedAtUtc}, {DeactivatedAtUtc}, {Version}";
+        /// <summary>Insert order. The parameter binding is built from the same order.</summary>
+        public static readonly string[] All =
+        [
+            Id, GroupId, RuleId, RunId, Status, WorkflowStatus, AssignedTo, Notes,
+            ExternalNotes, Priority, ExternalReceivedAtUtc, SuppressionExpiresAtUtc,
+            Context, CreatedAtUtc, UpdatedAtUtc, ActivatedAtUtc, DeactivatedAtUtc, Version
+        ];
+
+        public static readonly string AllColumns = string.Join(", ", All);
     }
 }

@@ -77,9 +77,7 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
         var connection = await OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand($"""
             INSERT INTO {Db.Issues} ({Db.Issue.AllColumns})
-            VALUES (@id, @group_id, @rule_id, @run_id, @status, @workflow_status, @assigned_to, @notes,
-                    @external_notes, @priority, @external_received_at_utc, @suppression_expires_at_utc,
-                    @context, @created_at_utc, @updated_at_utc, @version)
+            VALUES {IssueValuesClause()}
             ON CONFLICT ({Db.Issue.Id}) DO UPDATE SET
             {UpsertAssignments}
             {guard}
@@ -128,7 +126,7 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
         for (var i = 0; i < rows.Count; i++)
         {
             sql.Append(i > 0 ? ",\n" : string.Empty)
-                .Append($"(@id{i}, @g{i}, @ru{i}, @rn{i}, @s{i}, @w{i}, @a{i}, @n{i}, @xn{i}, @p{i}, @xr{i}, @e{i}, @c{i}, @cr{i}, @u{i}, @v{i})");
+                .Append(IssueValuesClause(i.ToString()));
             AddIssueParameters(command, rows[i], i.ToString());
         }
 
@@ -333,22 +331,9 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
         reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16),
         reader.GetInt32(17)));
 
-    private static void AddIssueParameters(NpgsqlCommand command, IssueRow row, string suffix = "")
+    internal static void AddIssueParameters(NpgsqlCommand command, IssueRow row, string suffix = "")
     {
-        string[] names = suffix.Length == 0
-            ?
-            [
-                "id", "group_id", "rule_id", "run_id", "status", "workflow_status", "assigned_to",
-                "notes", "external_notes", "priority", "external_received_at_utc",
-                "suppression_expires_at_utc", "context", "created_at_utc", "updated_at_utc",
-                "activated_at_utc", "deactivated_at_utc", "version"
-            ]
-            :
-            [
-                $"id{suffix}", $"g{suffix}", $"ru{suffix}", $"rn{suffix}", $"s{suffix}", $"w{suffix}",
-                $"a{suffix}", $"n{suffix}", $"xn{suffix}", $"p{suffix}", $"xr{suffix}", $"e{suffix}",
-                $"c{suffix}", $"cr{suffix}", $"u{suffix}", $"ac{suffix}", $"de{suffix}", $"v{suffix}"
-            ];
+        var names = IssueParameterNames(suffix);
 
         command.Parameters.AddWithValue(names[0], row.Id);
         command.Parameters.AddWithValue(names[1], row.GroupId);
@@ -378,6 +363,30 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
         });
         command.Parameters.AddWithValue(names[17], row.Version);
     }
+
+    /// <summary>
+    /// The bind order for an issue row, in the same order as <see cref="Db.Issue.AllColumns"/>.
+    /// Single source for both the parameter binding and the VALUES clause: when these were
+    /// written out separately, adding a column updated one and not the other and every insert
+    /// failed with "INSERT has more target columns than expressions".
+    /// </summary>
+    private static string[] IssueParameterNames(string suffix = "") => suffix.Length == 0
+        ?
+        [
+            "id", "group_id", "rule_id", "run_id", "status", "workflow_status", "assigned_to",
+            "notes", "external_notes", "priority", "external_received_at_utc",
+            "suppression_expires_at_utc", "context", "created_at_utc", "updated_at_utc",
+            "activated_at_utc", "deactivated_at_utc", "version"
+        ]
+        :
+        [
+            $"id{suffix}", $"g{suffix}", $"ru{suffix}", $"rn{suffix}", $"s{suffix}", $"w{suffix}",
+            $"a{suffix}", $"n{suffix}", $"xn{suffix}", $"p{suffix}", $"xr{suffix}", $"e{suffix}",
+            $"c{suffix}", $"cr{suffix}", $"u{suffix}", $"ac{suffix}", $"de{suffix}", $"v{suffix}"
+        ];
+
+    internal static string IssueValuesClause(string suffix = "") =>
+        $"({string.Join(", ", IssueParameterNames(suffix).Select(name => $"@{name}"))})";
 
     private static async Task WriteNullableTextAsync(
         NpgsqlBinaryImporter writer,

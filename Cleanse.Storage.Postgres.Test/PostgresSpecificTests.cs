@@ -178,8 +178,8 @@ public sealed class PostgresSpecificTests(PostgresFixture fixture) : IAsyncLifet
         await using var command = fixture.DataSource.CreateCommand(
             """
             INSERT INTO issues (id, group_id, rule_id, run_id, status, workflow_status,
-                                context, created_at_utc, updated_at_utc, version)
-            VALUES ('x', 'g', 'r', 'run', 'nonsense', 'todo', '{}', now(), now(), 1)
+                                context, created_at_utc, updated_at_utc, activated_at_utc, version)
+            VALUES ('x', 'g', 'r', 'run', 'nonsense', 'todo', '{}', now(), now(), now(), 1)
             """);
 
         var failure = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
