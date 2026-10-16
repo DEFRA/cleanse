@@ -76,5 +76,7 @@ jobs:
       - name: Fail if the EF model has drifted from the committed SQL
         run: |
           dotnet tool restore
+          # dotnet-ef reads project metadata through msbuild, which does not restore implicitly.
+          dotnet restore Cleanse.Storage.Postgres
           dotnet dotnet-ef migrations has-pending-model-changes \
             --project Cleanse.Storage.Postgres
