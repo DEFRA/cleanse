@@ -7,6 +7,13 @@
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!-- Emits the OpenAPI document at build time, so CI never has to start the app or a database. -->
+    <OpenApiGenerateDocuments>true</OpenApiGenerateDocuments>
+    <OpenApiGenerateDocumentsOnBuild>true</OpenApiGenerateDocumentsOnBuild>
+    <OpenApiDocumentsDirectory>$(MSBuildProjectDirectory)/../artifacts/openapi</OpenApiDocumentsDirectory>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="..\.dockerignore">
       <Link>.dockerignore</Link>
@@ -14,11 +21,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.10.5" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="Elastic.CommonSchema.Serilog" Version="9.0.0" />
     <PackageReference Include="Elastic.Serilog.Enrichers.Web" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
     <PackageReference Include="Microsoft.AspNetCore.HeaderPropagation" Version="10.0.8" />
-    <PackageReference Include="MongoDB.Driver" Version="3.8.1" />
-    <PackageReference Include="MongoDB.Driver.Authentication.AWS" Version="3.8.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
+    <!-- Lifts the 2.0.0 that Microsoft.AspNetCore.OpenApi pulls in: CVE-2026-49451, a stack
+         overflow on circular schema references. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.8">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Enrichers.ClientInfo" Version="2.9.0" />
     <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
@@ -27,5 +43,19 @@
     <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- All three providers ship; one is selected by configuration. The same artefact then runs
+         locally on SQLite and on CDP against Aurora. -->
+    <ProjectReference Include="..\Cleanse.Core\Cleanse.Core.csproj" />
+    <ProjectReference Include="..\Cleanse.Rules\Cleanse.Rules.csproj" />
+    <ProjectReference Include="..\Cleanse.Rules.Krds\Cleanse.Rules.Krds.csproj" />
+    <ProjectReference Include="..\Cleanse.Storage.InMemory\Cleanse.Storage.InMemory.csproj" />
+    <ProjectReference Include="..\Cleanse.Storage.Postgres\Cleanse.Storage.Postgres.csproj" />
+    <ProjectReference Include="..\Cleanse.Storage.Sqlite\Cleanse.Storage.Sqlite.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Cleanse.Api.Test" />
+  </ItemGroup>
 
 </Project>

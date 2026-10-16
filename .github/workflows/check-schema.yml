@@ -1,0 +1,71 @@
+name: Check schema
+
+# Applies the changelog to a throwaway PostgreSQL 16 instance, matching Aurora 16.6. Catches a
+# broken or non-idempotent migration before it ever reaches an environment, since published
+# changesets are immutable and cannot be edited afterwards.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'changelog/**'
+      - 'Cleanse.Storage.Postgres/Schema/**'
+      - '.github/workflows/check-schema.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check-schema:
+    runs-on: ubuntu-latest
+
+    env:
+      LIQUIBASE_VERSION: 5.0.1
+      LIQUIBASE_CHANGELOG_PATH: db.changelog.xml
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: liquibase
+          POSTGRES_PASSWORD: liquibase
+          POSTGRES_DB: liquibase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply changelog
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
+            liquibase/liquibase:${LIQUIBASE_VERSION} \
+            --url="jdbc:postgresql://localhost:5432/liquibase" \
+            --username=liquibase \
+            --password=liquibase \
+            --changeLogFile="${LIQUIBASE_CHANGELOG_PATH}" \
+            --searchPath=/liquibase/changelog \
+            update
+
+      - name: Re-apply to prove idempotency
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
+            liquibase/liquibase:${LIQUIBASE_VERSION} \
+            --url="jdbc:postgresql://localhost:5432/liquibase" \
+            --username=liquibase \
+            --password=liquibase \
+            --changeLogFile="${LIQUIBASE_CHANGELOG_PATH}" \
+            --searchPath=/liquibase/changelog \
+            update
+
+      - name: Fail if the EF model has drifted from the committed SQL
+        run: |
+          dotnet tool restore
+          dotnet dotnet-ef migrations has-pending-model-changes \
+            --project Cleanse.Storage.Postgres

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    CDP applies this through Portal > Apply Changelog, which runs Liquibase on CodeBuild as the
+    cleanse_ddl user. The running service has no DDL rights and never executes migrations.
+
+    The SQL files are generated, not hand-written:
+        dotnet dotnet-ef migrations add <Name> --project Cleanse.Storage.Postgres --output-dir Schema/Migrations
+        dotnet dotnet-ef migrations script --idempotent --project Cleanse.Storage.Postgres \
+            --output changelog/sql/<nnnn>_<name>.sql
+
+    Published changesets are immutable. To change the schema, add a new migration and a new
+    changeSet; never edit one that has already been applied.
+-->
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        splitStatements=false is required: the generated script wraps each migration in a
+        DO $EF$ ... $EF$ block, and Liquibase's default splitter would cut those at the
+        semicolons inside them.
+
+        runInTransaction=false because the script manages its own transaction. On failure EF's
+        transaction rolls the DDL back and Liquibase leaves the changeset unlogged, so a retry
+        is safe.
+    -->
+    <changeSet id="0001-initial-schema" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Issues, rule runs, audit entries and issue history.</comment>
+        <sqlFile path="sql/0001_initial_schema.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+    <changeSet id="0002-grants" author="cleanse" runOnChange="false">
+        <!--
+            Skipped where the DML role does not exist, which is the case in the PR workflow that
+            applies this changelog to a throwaway container.
+        -->
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM pg_roles WHERE rolname = 'cleanse'
+            </sqlCheck>
+        </preConditions>
+        <comment>Grant the DML user access to objects owned by the DDL user.</comment>
+        <sqlFile path="sql/0002_grants.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+    <changeSet id="0003-imports-and-external-state" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Import job tracking, and the externally-owned fields mirrored from SPOL.</comment>
+        <sqlFile path="sql/0003_imports_and_external_state.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+    <changeSet id="0004-rule-run-progress" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Run progress, heartbeat, cancellation and failure diagnostics.</comment>
+        <sqlFile path="sql/0004_rule_run_progress.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+    <changeSet id="0005-issue-activation-and-reset-log" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Issue activation timestamps, and a reset log that a reset does not delete.</comment>
+        <sqlFile path="sql/0005_issue_activation_and_reset_log.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+</databaseChangeLog>

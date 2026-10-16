@@ -4,6 +4,7 @@ WORKDIR /src
 COPY . .
 WORKDIR "/src"
 RUN dotnet test Cleanse.Test
+RUN dotnet test Cleanse.Rules.Test
 RUN dotnet publish Cleanse -c Release -o /app/publish /p:UseAppHost=false
 
 # Final production image
