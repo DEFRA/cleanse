@@ -14,70 +14,85 @@ services:
     networks:
       - cdp-tenant
 
-  redis:
-    image: redis:7.2.3-alpine3.18
+  # Stands in for Aurora, including the two-role model CDP uses: cleanse_ddl owns the schema,
+  # cleanse is the login the service connects as and only ever has DML rights.
+  postgres:
+    image: postgres:16.10-alpine
     ports:
-      - '6379:6379'
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: cleanse_ddl
+      POSTGRES_PASSWORD: cleanse_ddl
+      POSTGRES_DB: cleanse
+    volumes:
+      - ./compose/postgres/init:/docker-entrypoint-initdb.d:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cleanse_ddl -d cleanse']
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - cdp-tenant
 
-  mongodb:
-    image: mongo:7.0.28
+  # One-shot, mirroring Portal > Apply Changelog. The service has no DDL rights and never migrates.
+  liquibase:
+    image: liquibase/liquibase:4.33-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./changelog:/liquibase/changelog:ro
+    command:
+      - --search-path=/liquibase/changelog
+      - --changelog-file=db.changelog.xml
+      - --url=jdbc:postgresql://postgres:5432/cleanse
+      - --username=cleanse_ddl
+      - --password=cleanse_ddl
+      - update
     networks:
       - cdp-tenant
-    ports:
-      - '27017:27017'
-    volumes:
-      - mongodb-data:/data
 
   ################################################################################
 
-  # your-frontend:
-  #   image: defradigital/your-frontend:${YOUR_FRONTEND_VERSION:-latest}
-  #   ports:
-  #     - '3000:3000'
-  #   links:
-  #     - 'floci:floci'
-  #     - 'redis:redis'
-  #   depends_on:
-  #     floci:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_started
-  #   env_file:
-  #     - 'compose/aws.env'
-  #   environment:
-  #     PORT: 3000
-  #     NODE_ENV: development
-  #     REDIS_HOST: redis
-  #     USE_SINGLE_INSTANCE_CACHE: true
-  #   networks:
-  #     - cdp-tenant
-
-  your-backend:
+  cleanse:
     build: ./
     ports:
       - '8085:8085'
-    links:
-      - 'floci:floci'
-      - 'mongodb:mongodb'
     depends_on:
       floci:
         condition: service_healthy
-      mongodb:
-        condition: service_started
+      liquibase:
+        condition: service_completed_successfully
     env_file:
       - 'compose/aws.env'
     environment:
       ASPNETCORE_URLS: http://+:8085
-      Mongo__DatabaseUri: mongodb://mongodb:27017/
+      # aws.env points at localhost, which is this container rather than the emulator.
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_ENDPOINT_URL_S3: http://floci:4566
+      Storage__Provider: Postgres
+      Storage__Postgres__Host: postgres
+      Storage__Postgres__Database: cleanse
+      Storage__Postgres__Username: cleanse
+      Storage__Postgres__UseIamAuthentication: 'false'
+      Storage__Postgres__LocalPassword: cleanse
+      Imports__S3BucketName: cleanse-imports
+      Auth__ApiKey__Key: local-development-key
+      Auth__ApiKey__ClientName: local-developer
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:8085/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     networks:
       - cdp-tenant
 
 ################################################################################
 
 volumes:
-  mongodb-data:
+  postgres-data:
 
 networks:
   cdp-tenant:

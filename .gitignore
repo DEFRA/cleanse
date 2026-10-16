@@ -267,3 +267,8 @@ __pycache__/
 
 library.db
 .envrc
+
+# Local development SQLite store (Storage:Provider=Sqlite)
+cleanse.local.db
+cleanse.local.db-shm
+cleanse.local.db-wal

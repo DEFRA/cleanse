@@ -1,0 +1,82 @@
+name: Check schema
+
+# Applies the changelog to a throwaway PostgreSQL 16 instance, matching Aurora 16.6. Catches a
+# broken or non-idempotent migration before it ever reaches an environment, since published
+# changesets are immutable and cannot be edited afterwards.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'changelog/**'
+      - 'Cleanse.Storage.Postgres/Schema/**'
+      - '.github/workflows/check-schema.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check-schema:
+    runs-on: ubuntu-latest
+
+    env:
+      # Kept in step with the liquibase service in compose.yml, so the changelog is validated
+      # against the same engine that applies it. Liquibase 5 Community dropped the bundled JDBC
+      # drivers and is FSL rather than Apache 2.0, so moving up is a deliberate decision.
+      LIQUIBASE_IMAGE: liquibase/liquibase:4.33-alpine
+      LIQUIBASE_CHANGELOG_PATH: db.changelog.xml
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: liquibase
+          POSTGRES_PASSWORD: liquibase
+          POSTGRES_DB: liquibase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply changelog
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
+            ${LIQUIBASE_IMAGE} \
+            --url="jdbc:postgresql://localhost:5432/liquibase" \
+            --username=liquibase \
+            --password=liquibase \
+            --changeLogFile="${LIQUIBASE_CHANGELOG_PATH}" \
+            --searchPath=/liquibase/changelog \
+            update
+
+      - name: Re-apply to prove idempotency
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
+            ${LIQUIBASE_IMAGE} \
+            --url="jdbc:postgresql://localhost:5432/liquibase" \
+            --username=liquibase \
+            --password=liquibase \
+            --changeLogFile="${LIQUIBASE_CHANGELOG_PATH}" \
+            --searchPath=/liquibase/changelog \
+            update
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0
+
+      - name: Fail if the EF model has drifted from the committed SQL
+        run: |
+          dotnet tool restore
+          # dotnet-ef reads project metadata through msbuild, which does not restore implicitly.
+          dotnet restore Cleanse.Storage.Postgres
+          dotnet dotnet-ef migrations has-pending-model-changes \
+            --project Cleanse.Storage.Postgres

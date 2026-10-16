@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Re-publish the release for an existing tag, e.g. 1.4.2'
+        required: true
+        type: string
 
 concurrency:
   group: $${{ github.workflow }}
@@ -36,6 +42,79 @@ jobs:
         uses: DEFRA/cdp-build-action/build@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Versions the changelog alongside the service build and uploads it for the Portal.
+      # Publishing does not apply anything: that is a deliberate manual step per environment
+      # via Portal > Apply Changelog. Published changesets are immutable.
+      - name: Publish DB migrations
+        uses: DEFRA/cdp-build-action/publish-db-migrations@main
+        with:
+          path: ./changelog
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Runs in the same workflow as the build on purpose. The build action pushes the tag using
+  # GITHUB_TOKEN, and GitHub does not raise workflow-triggering events for actions taken with
+  # that token, so a separate `on: push: tags:` workflow would never fire.
+  release:
+    name: Publish GitHub release
+    needs: build
+    if: always() && (needs.build.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.release_version }}" ]; then
+            VERSION="${{ inputs.release_version }}"
+          else
+            git fetch --tags --force
+            # The build action tags with WITH_V=false, so these are bare semver: 1.2.3, not v1.2.3.
+            VERSION="$(git tag --list --sort=-v:refname | head -n 1)"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "No tag found to release." >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Generate the OpenAPI document
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build Cleanse/Cleanse.csproj -c Release --nologo
+          cp artifacts/openapi/Cleanse.json \
+             "cleanse-openapi-${{ steps.version.outputs.version }}.json"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" "cleanse-openapi-${VERSION}.json" --clobber
+          else
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes \
+              "cleanse-openapi-${VERSION}.json"
+          fi
   ## SonarCloud
   ## Uncomment to enable SonarCloud scan
   ## Requires project to be set up in SonarCloud
