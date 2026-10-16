@@ -19,7 +19,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      LIQUIBASE_VERSION: 5.0.1
+      # Kept in step with the liquibase service in compose.yml, so the changelog is validated
+      # against the same engine that applies it. Liquibase 5 Community dropped the bundled JDBC
+      # drivers and is FSL rather than Apache 2.0, so moving up is a deliberate decision.
+      LIQUIBASE_IMAGE: liquibase/liquibase:4.33-alpine
       LIQUIBASE_CHANGELOG_PATH: db.changelog.xml
 
     services:
@@ -44,7 +47,7 @@ jobs:
         run: |
           docker run --rm --network host \
             -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
-            liquibase/liquibase:${LIQUIBASE_VERSION} \
+            ${LIQUIBASE_IMAGE} \
             --url="jdbc:postgresql://localhost:5432/liquibase" \
             --username=liquibase \
             --password=liquibase \
@@ -56,13 +59,19 @@ jobs:
         run: |
           docker run --rm --network host \
             -v "${{ github.workspace }}/changelog:/liquibase/changelog" \
-            liquibase/liquibase:${LIQUIBASE_VERSION} \
+            ${LIQUIBASE_IMAGE} \
             --url="jdbc:postgresql://localhost:5432/liquibase" \
             --username=liquibase \
             --password=liquibase \
             --changeLogFile="${LIQUIBASE_CHANGELOG_PATH}" \
             --searchPath=/liquibase/changelog \
             update
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0
 
       - name: Fail if the EF model has drifted from the committed SQL
         run: |
