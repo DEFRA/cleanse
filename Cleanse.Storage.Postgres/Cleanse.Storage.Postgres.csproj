@@ -20,7 +20,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <!-- Lifts the vulnerable 9.0.0 that AWSSDK.Core pulls in transitively. -->
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.12" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
