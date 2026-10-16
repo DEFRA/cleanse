@@ -3,10 +3,9 @@
     CDP applies this through Portal > Apply Changelog, which runs Liquibase on CodeBuild as the
     cleanse_ddl user. The running service has no DDL rights and never executes migrations.
 
-    The SQL files are generated, not hand-written:
-        dotnet dotnet-ef migrations add <Name> --project Cleanse.Storage.Postgres --output-dir Schema/Migrations
-        dotnet dotnet-ef migrations script --idempotent --project Cleanse.Storage.Postgres \
-            --output changelog/sql/<nnnn>_<name>.sql
+    The SQL files are generated from EF Core migrations, not hand-written. See "Database
+    migrations" in README.md for the commands; they cannot be repeated here because XML
+    comments forbid a double hyphen.
 
     Published changesets are immutable. To change the schema, add a new migration and a new
     changeSet; never edit one that has already been applied.
