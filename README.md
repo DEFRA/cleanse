@@ -420,8 +420,13 @@ dotnet test Cleanse.Storage.Postgres.Test       # same suite on real Postgres vi
 dotnet test Cleanse.Test                        # cross-provider scenarios
 ```
 
-The Postgres suite starts a container through Testcontainers, so Docker must be running. The
-image build runs `dotnet test Cleanse.Test` as a build stage.
+The Postgres suite starts a container through Testcontainers, so Docker must be running. It lays
+the database out as CDP does: `cleanse_ddl` applies the changelog, grants included, and the stores
+connect as the DML-only `cleanse` role, so a store that needs more rights than the deployed
+service has fails here first. Without Docker the suite skips, except where `CI=true` (GitHub
+Actions sets it) or `CLEANSE_REQUIRE_DOCKER=true`, where it fails instead, so a pipeline cannot
+pass without having run it. The image build runs `dotnet test Cleanse.Test` and
+`dotnet test Cleanse.Rules.Test` as a build stage.
 
 Rules are pure functions over a context, so they are tested directly with no I/O at all. The
 engine is tested over real Core and the in-memory provider with only the data source faked. A

@@ -75,6 +75,19 @@ public sealed class PostgresRuleRunStoreTests(PostgresFixture fixture)
     public ValueTask DisposeAsync() => _harness.DisposeAsync();
 }
 
+[Collection(PostgresCollection.Name)]
+public sealed class PostgresImportJobStoreTests(PostgresFixture fixture)
+    : ImportJobStoreContractTests, IAsyncLifetime
+{
+    private readonly PostgresStoreHarness _harness = new(fixture);
+
+    protected override IImportJobStore CreateStore() => new PostgresImportJobStore(_harness.NewContext());
+
+    public ValueTask InitializeAsync() => _harness.InitializeAsync();
+
+    public ValueTask DisposeAsync() => _harness.DisposeAsync();
+}
+
 /// <summary>
 /// Composition rather than inheritance, because each contract suite is already a base class.
 /// </summary>

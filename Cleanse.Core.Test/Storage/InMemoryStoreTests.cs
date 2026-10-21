@@ -22,3 +22,8 @@ public sealed class InMemoryRuleRunStoreTests : RuleRunStoreContractTests
 {
     protected override IRuleRunStore CreateStore() => new InMemoryRuleRunStore();
 }
+
+public sealed class InMemoryImportJobStoreTests : ImportJobStoreContractTests
+{
+    protected override IImportJobStore CreateStore() => new InMemoryImportJobStore();
+}

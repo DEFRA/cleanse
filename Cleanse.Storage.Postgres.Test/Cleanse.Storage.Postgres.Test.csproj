@@ -37,6 +37,10 @@
     <Content Include="..\changelog\sql\*.sql" Link="changelog\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- And the DML role from the same script compose.yml uses to stand in for CDP's. -->
+    <Content Include="..\compose\postgres\init\*.sql" Link="roles\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
