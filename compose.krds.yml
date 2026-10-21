@@ -1,0 +1,23 @@
+# Layered over compose.yml to turn the rules engine on against a KRDS snapshot on this machine.
+# The Data Bridge is not reachable from a developer machine, so a snapshot read off disk stands in
+# for it, read-only and in place. ./dev-docker-up.ps1 -KrdsSnapshot <path> does this for you;
+# by hand it is:
+#
+#   $env:CLEANSE_KRDS_SNAPSHOT = 'C:/path/to/krds-db_<timestamp>.sqlite'
+#   docker compose -f compose.yml -f compose.krds.yml up -d --wait
+#
+# With the engine on, POST /v1/runs/trigger starts a run, and the nightly schedule
+# (Rules:DailyRunAtUtc) fires while the stack is up.
+services:
+  cleanse:
+    environment:
+      Rules__Enabled: 'true'
+      Rules__Krds__Provider: LocalFile
+      Rules__Krds__LocalFilePath: /data/krds/snapshot.sqlite
+    volumes:
+      # Long syntax on purpose: a missing source is an error here, where the short form would
+      # quietly create an empty directory in its place.
+      - type: bind
+        source: ${CLEANSE_KRDS_SNAPSHOT:?Set CLEANSE_KRDS_SNAPSHOT to the path of a KRDS snapshot (.sqlite)}
+        target: /data/krds/snapshot.sqlite
+        read_only: true
