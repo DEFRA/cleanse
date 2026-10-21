@@ -526,6 +526,10 @@ variables with `__` for nesting (`Storage__Postgres__Host`). Production values c
   timeouts, so a database probe here would cause restart loops.
 - **Logging** — Serilog in Elastic Common Schema format for CDP's OpenSearch. Never write to
   stderr during startup: MSBuild treats it as an error during build-time OpenAPI generation.
+  The console sink is declared under `Serilog:WriteTo` in `appsettings.json`, and `CdpLogging`
+  builds the main logger from that section alone, so without it the service writes nothing at
+  all. `Serilog:MinimumLevel` is applied to the root logger as well, the only place Serilog
+  honours its overrides; EF Core is held at `Warning` so the import worker's polling stays quiet.
 - **Startup warnings** — non-fatal misconfiguration (JWT disabled while `CDP_JWT_ISSUER` is
   present, no import bucket) is collected during DI and logged once the logger is up, rather than
   thrown.
