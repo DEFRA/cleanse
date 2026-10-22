@@ -21,5 +21,15 @@
 **/obj
 **/secrets.dev.yaml
 **/values.dev.yaml
+# Local development state and tooling. None of it belongs in the image, and leaving it in the
+# context would bust the build cache (and so re-run the in-image tests) on every compose edit.
+**/*.db
+**/*.db-shm
+**/*.db-wal
+compose.yml
+compose.*.yml
+compose/
+dev-up.ps1
+dev-docker-up.ps1
 LICENSE
 README.md

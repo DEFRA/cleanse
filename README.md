@@ -358,21 +358,49 @@ curl -XPOST localhost:8085/v1/runs/trigger -H 'x-cleanse-api-key: local-developm
 
 Changing the issue key scheme invalidates an existing `cleanse.local.db`; delete it and re-run.
 
-### With Docker Compose
+### With Docker
 
-[compose.yml](compose.yml) brings the service up the way it is deployed — Postgres with the
-two-role (DDL/DML) model, Liquibase applying the changelog, and Floci emulating S3:
+[dev-docker-up.ps1](dev-docker-up.ps1) brings the service up the way it is deployed:
+`ASPNETCORE_ENVIRONMENT=Production`, Postgres with the two-role (DDL/DML) model, Liquibase
+applying the changelog, and Floci emulating S3. It builds the image, waits until every container
+is healthy, checks that the API answers, and prints the URLs and keys. It runs on PowerShell 7 and
+on Windows PowerShell 5.1.
 
-```bash
-docker compose up --build -d
+```powershell
+./dev-docker-up.ps1                        # build, start, wait, smoke check
+./dev-docker-up.ps1 -NoBuild               # restart without rebuilding the image
+./dev-docker-up.ps1 -KrdsSnapshot <path>   # also run the rules engine against a local snapshot
+./dev-docker-up.ps1 -Reset                 # start from an empty database
+./dev-docker-up.ps1 -Follow                # then follow the service's logs, readably
+./dev-docker-up.ps1 -Down                  # stop; add -Reset to delete the database as well
 ```
 
 | Service | Purpose |
 | --- | --- |
-| `postgres` | Aurora stand-in. Owner role `cleanse_ddl`, service role `cleanse`. |
-| `liquibase` | One-shot. Applies `changelog/` and exits; the API waits for it to succeed. |
-| `floci` | AWS emulator ([floci.io](https://floci.io)) providing the `cleanse-imports` S3 bucket. |
-| `cleanse` | This service, on `http://localhost:8085`. |
+| `postgres` | Aurora stand-in on `localhost:5432`. Owner role `cleanse_ddl`, service role `cleanse`; each password is its role name. |
+| `liquibase` | One-shot. Applies `changelog/` as `cleanse_ddl` and exits; the API waits for it to succeed. |
+| `floci` | AWS emulator ([floci.io](https://floci.io)) on `localhost:4566`, providing the `cleanse-imports` S3 bucket. |
+| `cleanse` | This service, on `http://localhost:8085`, with the API key `local-development-key` and the reset key `local-development-reset-key`. |
+
+The database lives in a Docker volume and survives restarts. The rules engine stays off unless a
+snapshot is supplied, through `-KrdsSnapshot` or `$env:CLEANSE_KRDS_SNAPSHOT`; it is then mounted
+read-only by [compose.krds.yml](compose.krds.yml). `cleanse-app` defaults to
+`http://localhost:8085` and the same API key, so its `dev-up.ps1` works against this stack as it
+is.
+
+Move the host ports with `CLEANSE_PORT`, `CLEANSE_POSTGRES_PORT` and `CLEANSE_FLOCI_PORT`, for
+instance when another stack already holds 4566. The script checks them before starting anything
+and names whatever holds them. Plain `docker compose up --build -d --wait` works too; the script
+adds the checks around it.
+
+Two details of the stack are easy to undo by accident:
+
+- Shell scripts under `compose/` run inside Linux containers, so [.gitattributes](.gitattributes)
+  keeps them LF. A clone made before that rule may still hold CRLF copies, which the script
+  converts.
+- The AWS SDK addresses buckets by hostname (`cleanse-imports.floci`), as it does against real
+  S3, so Floci runs with `FLOCI_HOSTNAME=floci` and a network alias per bucket. A new bucket needs
+  both an `aws s3 mb` line in `compose/floci/start.d` and an alias in `compose.yml`.
 
 A richer platform-like environment is available in
 [DEFRA/cdp-local-environment](https://github.com/DEFRA/cdp-local-environment).
@@ -392,8 +420,13 @@ dotnet test Cleanse.Storage.Postgres.Test       # same suite on real Postgres vi
 dotnet test Cleanse.Test                        # cross-provider scenarios
 ```
 
-The Postgres suite starts a container through Testcontainers, so Docker must be running. The
-image build runs `dotnet test Cleanse.Test` as a build stage.
+The Postgres suite starts a container through Testcontainers, so Docker must be running. It lays
+the database out as CDP does: `cleanse_ddl` applies the changelog, grants included, and the stores
+connect as the DML-only `cleanse` role, so a store that needs more rights than the deployed
+service has fails here first. Without Docker the suite skips, except where `CI=true` (GitHub
+Actions sets it) or `CLEANSE_REQUIRE_DOCKER=true`, where it fails instead, so a pipeline cannot
+pass without having run it. The image build runs `dotnet test Cleanse.Test` and
+`dotnet test Cleanse.Rules.Test` as a build stage.
 
 Rules are pure functions over a context, so they are tested directly with no I/O at all. The
 engine is tested over real Core and the in-memory provider with only the data source faked. A
@@ -526,6 +559,10 @@ variables with `__` for nesting (`Storage__Postgres__Host`). Production values c
   timeouts, so a database probe here would cause restart loops.
 - **Logging** — Serilog in Elastic Common Schema format for CDP's OpenSearch. Never write to
   stderr during startup: MSBuild treats it as an error during build-time OpenAPI generation.
+  The console sink is declared under `Serilog:WriteTo` in `appsettings.json`, and `CdpLogging`
+  builds the main logger from that section alone, so without it the service writes nothing at
+  all. `Serilog:MinimumLevel` is applied to the root logger as well, the only place Serilog
+  honours its overrides; EF Core is held at `Warning` so the import worker's polling stays quiet.
 - **Startup warnings** — non-fatal misconfiguration (JWT disabled while `CDP_JWT_ISSUER` is
   present, no import bucket) is collected during DI and logged once the logger is up, rather than
   thrown.

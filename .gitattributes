@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers (floci's init hooks). Checked out with CRLF, as Git
+# for Windows does by default, bash reads the carriage returns as part of each command and the
+# hook fails, which takes floci and the rest of the compose stack down with it.
+*.sh text eol=lf

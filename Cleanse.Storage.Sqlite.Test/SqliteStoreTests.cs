@@ -36,6 +36,8 @@ internal sealed class SqliteHarness : IAsyncDisposable
 
     public SqliteDataResetStore Reset => new(_database);
 
+    public SqliteImportJobStore Imports => new(_database);
+
     public ValueTask DisposeAsync() => _database.DisposeAsync();
 }
 
@@ -78,6 +80,15 @@ public sealed class SqliteRuleRunStoreTests : RuleRunStoreContractTests, IAsyncD
     private readonly SqliteHarness _harness = new();
 
     protected override IRuleRunStore CreateStore() => _harness.Runs;
+
+    public ValueTask DisposeAsync() => _harness.DisposeAsync();
+}
+
+public sealed class SqliteImportJobStoreTests : ImportJobStoreContractTests, IAsyncDisposable
+{
+    private readonly SqliteHarness _harness = new();
+
+    protected override IImportJobStore CreateStore() => _harness.Imports;
 
     public ValueTask DisposeAsync() => _harness.DisposeAsync();
 }

@@ -1,25 +1,40 @@
+# Runs Cleanse the way CDP does: Production settings, Postgres with the DDL/DML role split, the
+# changelog applied by Liquibase, and S3 from an emulator. Start it with ./dev-docker-up.ps1.
+# Host ports can be moved with CLEANSE_PORT, CLEANSE_POSTGRES_PORT and CLEANSE_FLOCI_PORT.
+name: cleanse
+
 services:
   # floci is a replacement for localstack. It emulates AWS resources (sqs, sns, s3 etc) for local development
   # See: https://floci.io for more details
   floci:
-    image: hectorvent/floci:latest-aws
+    # Pinned. hectorvent/floci stopped publishing at 1.5.5 when the project moved to floci/floci,
+    # so latest-aws is this image anyway; moving to floci/floci should be a deliberate change.
+    image: hectorvent/floci:1.5.5-aws
     ports:
-      - '4566:4566'
+      - '${CLEANSE_FLOCI_PORT:-4566}:4566'
     env_file:
       - 'compose/aws.env'
     environment:
       FLOCI_DEFAULT_REGION: eu-west-2
+      # The AWS SDK addresses buckets virtual-host style (<bucket>.<host>), exactly as it does
+      # against real S3 on CDP. Naming the emulator's host lets it read <bucket>.floci as a
+      # bucket request, and the alias below makes that name resolve on the network.
+      FLOCI_HOSTNAME: floci
     volumes:
       - ./compose/floci/start.d:/etc/floci/init/start.d:ro
     networks:
-      - cdp-tenant
+      cdp-tenant:
+        aliases:
+          # One per bucket the service uses; see compose/floci/start.d.
+          - cleanse-imports.floci
 
   # Stands in for Aurora, including the two-role model CDP uses: cleanse_ddl owns the schema,
   # cleanse is the login the service connects as and only ever has DML rights.
   postgres:
+    # Kept in step with the Testcontainers image in Cleanse.Storage.Postgres.Test. Aurora runs 16.6.
     image: postgres:16.10-alpine
     ports:
-      - '5432:5432'
+      - '${CLEANSE_POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_USER: cleanse_ddl
       POSTGRES_PASSWORD: cleanse_ddl
@@ -58,7 +73,7 @@ services:
   cleanse:
     build: ./
     ports:
-      - '8085:8085'
+      - '${CLEANSE_PORT:-8085}:8085'
     depends_on:
       floci:
         condition: service_healthy
@@ -67,6 +82,9 @@ services:
     env_file:
       - 'compose/aws.env'
     environment:
+      # What CDP runs, so the Postgres and S3 paths are the ones exercised, never SQLite or a temp
+      # directory. appsettings.Development.json is therefore not loaded; everything is set here.
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8085
       # aws.env points at localhost, which is this container rather than the emulator.
       AWS_ENDPOINT_URL: http://floci:4566
@@ -78,8 +96,12 @@ services:
       Storage__Postgres__UseIamAuthentication: 'false'
       Storage__Postgres__LocalPassword: cleanse
       Imports__S3BucketName: cleanse-imports
+      # The same local-only values as appsettings.Development.json, so cleanse-app works against
+      # this stack unchanged, including its admin reset page. The rules engine stays off unless
+      # compose.krds.yml is layered on top.
       Auth__ApiKey__Key: local-development-key
       Auth__ApiKey__ClientName: local-developer
+      Auth__Reset__Key: local-development-reset-key
     healthcheck:
       test: ['CMD-SHELL', 'curl -fsS http://localhost:8085/health || exit 1']
       interval: 10s
