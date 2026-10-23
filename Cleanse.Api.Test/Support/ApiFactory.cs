@@ -20,6 +20,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     public const string ApiKey = "test-api-key";
     public const string ResetKey = "test-reset-key";
+    public const string ServiceVersion = "9.9.9-test";
+    public const string CdpEnvironment = "test-host";
 
     /// <summary>
     /// Configuration arrives as environment variables rather than through ConfigureAppConfiguration.
@@ -43,7 +45,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             // Likewise pinned away from the developer's real snapshot, so the diagnostics probe
             // reports the same thing on every machine and in CI.
             ["Rules__Krds__Provider"] = "LocalFile",
-            ["Rules__Krds__LocalFilePath"] = Path.Combine(Path.GetTempPath(), "cleanse-no-such-snapshot.sqlite")
+            ["Rules__Krds__LocalFilePath"] = Path.Combine(Path.GetTempPath(), "cleanse-no-such-snapshot.sqlite"),
+            // What CDP injects into every container, so the diagnostics can say which build answered.
+            ["SERVICE_VERSION"] = ServiceVersion,
+            ["ENVIRONMENT"] = CdpEnvironment
         };
 
         foreach (var (key, value) in settings)

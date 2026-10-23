@@ -68,6 +68,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     var storage = configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
     services.AddCleanseStorage(storage, builder.Environment);
     services.AddCleanseCore();
+    services.AddSingleton(ServiceInfo.FromEnvironment(TimeProvider.System));
     services.AddTransient<IQueryHandler<GetDiagnosticsQuery, DiagnosticsDto>, GetDiagnosticsQueryHandler>();
 
     var imports = configuration.GetSection("Imports").Get<ImportOptions>() ?? new ImportOptions();

@@ -39,6 +39,18 @@ public class DiagnosticsEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.False(string.IsNullOrWhiteSpace(storage.GetProperty("target").GetString()));
     }
 
+    [Fact]
+    public async Task Diagnostics_says_which_build_is_answering()
+    {
+        var service = (await GetAsync()).GetProperty("service");
+
+        Assert.Equal("cleanse", service.GetProperty("name").GetString());
+        Assert.Equal(ApiFactory.ServiceVersion, service.GetProperty("version").GetString());
+        Assert.Equal(ApiFactory.CdpEnvironment, service.GetProperty("environment").GetString());
+        Assert.StartsWith(".NET", service.GetProperty("runtime").GetString(), StringComparison.Ordinal);
+        Assert.True(service.GetProperty("startedAtUtc").GetDateTimeOffset() <= DateTimeOffset.UtcNow);
+    }
+
     /// <summary>
     /// The test host points KRDS at a snapshot that is not there, which is exactly the case that
     /// must be reported with a reason rather than thrown or quietly claimed as healthy.
