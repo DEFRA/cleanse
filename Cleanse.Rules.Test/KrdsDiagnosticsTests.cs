@@ -2,12 +2,14 @@ using System.Net;
 using System.Text;
 using Cleanse.Core.Abstractions;
 using Cleanse.Rules.Krds;
+using Microsoft.Data.Sqlite;
 
 namespace Cleanse.Rules.Test;
 
 /// <summary>
-/// The KRDS row on the status page. The Data Bridge is checked through its own anonymous /health
-/// endpoint, and only its host name is ever shown.
+/// The two KRDS rows on the status page. The Data Bridge's health is checked through its own
+/// anonymous /health endpoint; access is checked by reading the latest snapshot with the key, as
+/// a run does. Only the bridge's host name is ever shown, and never the key or a download URL.
 /// </summary>
 public class KrdsDiagnosticsTests
 {
@@ -73,10 +75,14 @@ public class KrdsDiagnosticsTests
     {
         var (diagnostics, handler) = Probe(DataBridge(baseUrl), Answer(HttpStatusCode.OK, HealthReport("Healthy")));
 
-        var result = await diagnostics.ProbeAsync();
+        var health = await diagnostics.ProbeAsync();
+        var access = await diagnostics.ProbeAccessAsync();
 
-        Assert.Equal(ProbeState.Unknown, result.State);
-        Assert.Contains("Rules:Krds:BaseUrl", result.Detail, StringComparison.Ordinal);
+        Assert.All([health, access], result =>
+        {
+            Assert.Equal(ProbeState.Unknown, result.State);
+            Assert.Contains("Rules:Krds:BaseUrl", result.Detail, StringComparison.Ordinal);
+        });
         Assert.Null(diagnostics.Target);
         Assert.Empty(handler.Requests);
     }
@@ -191,17 +197,177 @@ public class KrdsDiagnosticsTests
     }
 
     [Fact]
-    public async Task A_missing_key_does_not_stop_the_check_but_is_reported()
+    public async Task A_missing_key_does_not_stop_the_health_check()
     {
         var (diagnostics, handler) = Probe(DataBridge(withKey: false), Answer(HttpStatusCode.OK, HealthReport("Healthy")));
 
         var result = await diagnostics.ProbeAsync();
 
         Assert.Equal(ProbeState.Ok, result.State);
-        Assert.Equal(
-            "Healthy, 200 from /health. Rules:Krds:ApiKey is not set, so snapshots cannot be downloaded.",
-            result.Detail);
+        Assert.Equal("Healthy, 200 from /health", result.Detail);
         Assert.Single(handler.Requests);
+    }
+
+    /// <summary>What the bridge answers for the latest snapshot, as captured from dev.</summary>
+    private static string LatestSnapshot(string downloadUrl) => $$"""
+        {
+          "objectKey": "views/krds-db_20261019070003.sqlite",
+          "downloadUrl": "{{downloadUrl}}",
+          "size": 851443712,
+          "lastModified": "2026-10-19T07:00:03+00:00",
+          "expiresAt": "2026-10-23T14:41:00Z"
+        }
+        """;
+
+    /// <summary>Generated, like the key, so nothing here reads as a real presigned URL.</summary>
+    private static string DownloadUrl() =>
+        $"https://snapshots.example/views/krds-db_20261019070003.sqlite?signature={Guid.NewGuid():N}";
+
+    [Fact]
+    public async Task Access_is_checked_by_reading_the_latest_snapshot_with_the_key()
+    {
+        var options = DataBridge();
+        var (diagnostics, handler) = Probe(options, Answer(HttpStatusCode.OK, LatestSnapshot(DownloadUrl())));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Ok, result.State);
+        Assert.Equal(
+            "API key accepted, 200 from /api/etl/staging/sqlite/latest. Latest snapshot " +
+            "views/krds-db_20261019070003.sqlite, 812 MB, last modified 2026-10-19 07:00 UTC",
+            result.Detail);
+
+        // The same read a rule run makes, asking for the shortest-lived URL the bridge mints.
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(new Uri($"{BaseUrl}/api/etl/staging/sqlite/latest?expiresInMinutes=1"), request.RequestUri);
+        Assert.Equal("ApiKey", request.Headers.Authorization?.Scheme);
+        Assert.Equal(options.ApiKey, request.Headers.Authorization?.Parameter);
+    }
+
+    [Fact]
+    public async Task Neither_the_presigned_url_nor_the_key_is_ever_repeated()
+    {
+        var options = DataBridge();
+        var downloadUrl = DownloadUrl();
+        var (diagnostics, _) = Probe(options, Answer(HttpStatusCode.OK, LatestSnapshot(downloadUrl)));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.DoesNotContain(downloadUrl, result.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("signature", result.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(options.ApiKey!, result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refused_key_fails_and_names_the_setting_to_fix()
+    {
+        var options = DataBridge();
+        var (diagnostics, _) = Probe(options, Answer(HttpStatusCode.Unauthorized, ""));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal(
+            "The Data Bridge refused the API key, 401 Unauthorized from /api/etl/staging/sqlite/latest. " +
+            "Rules:Krds:ApiKey must be the key the KRDS team issued for this environment.",
+            result.Detail);
+        Assert.DoesNotContain(options.ApiKey!, result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_bridge_with_no_snapshot_to_give_fails_with_its_own_explanation()
+    {
+        var (diagnostics, _) = Probe(
+            DataBridge(),
+            Answer(
+                HttpStatusCode.NotFound,
+                """{ "message": "No SQLite read model found. Run the ETL pipeline first.", "timestamp": "2026-10-23T14:40:00Z" }"""));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal(
+            "404 Not Found from /api/etl/staging/sqlite/latest: No SQLite read model found. Run the ETL pipeline first.",
+            result.Detail);
+    }
+
+    [Theory]
+    [InlineData("<html>Sign in to continue</html>")]
+    [InlineData("""{ "objectKey": "views/krds-db.sqlite" }""")]
+    [InlineData("")]
+    public async Task A_success_that_offers_nothing_to_download_is_not_access(string body)
+    {
+        var (diagnostics, _) = Probe(DataBridge(), Answer(HttpStatusCode.OK, body));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal(
+            "The API key was accepted, but the 200 from /api/etl/staging/sqlite/latest offered no snapshot to download.",
+            result.Detail);
+    }
+
+    [Fact]
+    public async Task A_read_that_does_not_answer_in_time_fails_rather_than_hanging()
+    {
+        var (diagnostics, _) = Probe(
+            DataBridge(),
+            async (_, token) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            },
+            timeout: TimeSpan.FromMilliseconds(100));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal("No answer from /api/etl/staging/sqlite/latest within 0.1 seconds.", result.Detail);
+    }
+
+    [Fact]
+    public async Task An_unreachable_bridge_cannot_be_read_either()
+    {
+        var (diagnostics, _) = Probe(
+            DataBridge(),
+            (_, _) => throw new HttpRequestException($"Name or service not known ({Host}:443)"));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Contains("Name or service not known", result.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Access_without_a_key_fails_without_asking()
+    {
+        var (diagnostics, handler) = Probe(DataBridge(withKey: false), Answer(HttpStatusCode.OK, LatestSnapshot(DownloadUrl())));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal(
+            "Rules:Krds:ApiKey is not set, so the Data Bridge cannot be read and no snapshot can be downloaded.",
+            result.Detail);
+        Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_request_cancels_the_access_probe()
+    {
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        var (diagnostics, _) = Probe(
+            DataBridge(),
+            async (_, token) =>
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => diagnostics.ProbeAccessAsync(cancelled.Token));
     }
 
     [Fact]
@@ -223,6 +389,73 @@ public class KrdsDiagnosticsTests
         {
             File.Delete(path);
         }
+    }
+
+    private static KrdsOptions LocalFile(string path) =>
+        new() { Provider = nameof(KrdsSnapshotProvider.LocalFile), LocalFilePath = path };
+
+    [Fact]
+    public async Task A_local_snapshot_is_read_the_way_a_run_reads_it()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"krds-probe-{Guid.NewGuid():N}.sqlite");
+        try
+        {
+            await using (var connection = new SqliteConnection($"Data Source={path};Pooling=False"))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "CREATE TABLE CtsOpenLocation (Cph TEXT); CREATE TABLE Holding (Cph TEXT);";
+                await command.ExecuteNonQueryAsync();
+            }
+
+            var (diagnostics, handler) = Probe(LocalFile(path), Answer(HttpStatusCode.OK, ""));
+
+            var result = await diagnostics.ProbeAccessAsync();
+
+            Assert.Equal(ProbeState.Ok, result.State);
+            Assert.Equal("Opened read-only: 2 tables", result.Detail);
+            Assert.Empty(handler.Requests);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData("", "opened, but holds no tables")]
+    [InlineData("This is a text file, not a SQLite database.", "file is not a database")]
+    public async Task A_local_file_that_cannot_be_read_as_a_snapshot_fails(string content, string reason)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, content);
+
+            var (diagnostics, _) = Probe(LocalFile(path), Answer(HttpStatusCode.OK, ""));
+
+            var result = await diagnostics.ProbeAccessAsync();
+
+            Assert.Equal(ProbeState.Failed, result.State);
+            Assert.Contains(reason, result.Detail, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task A_missing_local_snapshot_cannot_be_read()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"krds-probe-{Guid.NewGuid():N}.sqlite");
+        var (diagnostics, _) = Probe(LocalFile(path), Answer(HttpStatusCode.OK, ""));
+
+        var result = await diagnostics.ProbeAccessAsync();
+
+        Assert.Equal(ProbeState.Failed, result.State);
+        Assert.Equal($"The snapshot '{path}' does not exist.", result.Detail);
+        Assert.False(File.Exists(path));
     }
 
     private sealed class StubHandler(

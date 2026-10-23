@@ -76,6 +76,21 @@ public class DiagnosticsEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal("ok", body.GetProperty("issues").GetProperty("state").GetString());
     }
 
+    /// <summary>
+    /// Whether KRDS can be read, as a rule run reads it, is its own row: a source can answer and
+    /// still refuse this service. The test host's snapshot is missing, so it cannot be read either.
+    /// </summary>
+    [Fact]
+    public async Task Read_access_to_krds_is_reported_alongside_its_health()
+    {
+        var access = (await GetAsync()).GetProperty("krdsAccess");
+
+        Assert.Equal("failed", access.GetProperty("state").GetString());
+        Assert.Contains("does not exist", access.GetProperty("detail").GetString());
+        Assert.Equal("LocalFile", access.GetProperty("provider").GetString());
+        Assert.EndsWith("cleanse-no-such-snapshot.sqlite", access.GetProperty("target").GetString());
+    }
+
     [Fact]
     public async Task Issue_counts_are_broken_down_by_both_axes()
     {

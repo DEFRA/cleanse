@@ -238,15 +238,19 @@ function Test-Stack {
     throw "The API did not answer as expected: $($_.Exception.Message) See: docker compose logs cleanse"
   }
 
-  Write-Host ("    GET /v1/diagnostics  database {0} ({1}), rules data {2}" -f
-    $diagnostics.database.state, $diagnostics.database.detail, $diagnostics.krds.state)
+  Write-Host ("    GET /v1/diagnostics  database {0} ({1}), rules data {2}, read {3}" -f
+    $diagnostics.database.state, $diagnostics.database.detail, $diagnostics.krds.state, $diagnostics.krdsAccess.state)
 
   if ($diagnostics.database.state -ne 'ok') {
     throw "The service cannot use Postgres: $($diagnostics.database.detail)"
   }
 
-  if ($rulesOn -and $diagnostics.krds.state -ne 'ok') {
-    throw "The rules engine cannot read the snapshot: $($diagnostics.krds.detail)"
+  if ($rulesOn) {
+    foreach ($probe in 'krds', 'krdsAccess') {
+      if ($diagnostics.$probe.state -ne 'ok') {
+        throw "The rules engine cannot read the snapshot: $($diagnostics.$probe.detail)"
+      }
+    }
   }
 }
 

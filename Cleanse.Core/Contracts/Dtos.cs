@@ -123,13 +123,15 @@ public sealed record IssueCountsDto(
 /// <summary>
 /// Everything an operator needs to see at a glance. <see cref="Service"/> says which build is
 /// answering, <see cref="Database"/> is the issue store, <see cref="Storage"/> is where uploaded
-/// import files are kept, and <see cref="Krds"/> is the source the rules engine reads.
+/// import files are kept, <see cref="Krds"/> is whether the source the rules engine reads answers,
+/// and <see cref="KrdsAccess"/> is whether it can actually be read.
 /// </summary>
 public sealed record DiagnosticsDto(
     ServiceInfoDto Service,
     DependencyDto Database,
     DependencyDto Storage,
     DependencyDto Krds,
+    DependencyDto KrdsAccess,
     IssueCountsDto Issues,
     DateTimeOffset? LastResetAtUtc);
 

@@ -26,11 +26,12 @@ public static class KrdsServiceCollectionExtensions
         services.TryAddSingleton(options);
         services.TryAddSingleton<ICtsSamDataSourceFactory, KrdsCtsSamDataSourceFactory>();
 
-        // The bridge's health check is anonymous, so the probe can ask it as soon as there is a
-        // bridge to ask, even while the key or the rest of the configuration is still missing.
+        // Both probes can ask as soon as there is a bridge to ask, even while the key or the rest of
+        // the configuration is still missing: the health check is anonymous, and the access check
+        // reports a missing key itself.
         if (options.ResolveProvider() is KrdsSnapshotProvider.DataBridge)
         {
-            services.AddHttpClient(KrdsDiagnostics.HealthClientName, client =>
+            services.AddHttpClient(KrdsDiagnostics.ClientName, client =>
                 client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json")));
         }
 

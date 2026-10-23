@@ -18,14 +18,24 @@ public interface IStorageDiagnostics
     Task<ProbeResult> ProbeAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>The same contract for the KRDS snapshot source the rules engine reads.</summary>
+/// <summary>
+/// The same contract for the KRDS snapshot source the rules engine reads, with a second probe:
+/// a source can answer and still refuse to be read.
+/// </summary>
 public interface IKrdsDiagnostics
 {
     string ProviderName { get; }
 
     string? Target { get; }
 
+    /// <summary>Whether the source answers at all. For the Data Bridge, its anonymous health check.</summary>
     Task<ProbeResult> ProbeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether the source can be read the way the rules engine reads it. For the Data Bridge, a
+    /// call to one of its read APIs with the configured key, which only a genuine connection passes.
+    /// </summary>
+    Task<ProbeResult> ProbeAccessAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>The same contract for wherever uploaded import files are kept.</summary>

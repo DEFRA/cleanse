@@ -15,8 +15,10 @@
         Database  The issue store, Aurora Postgres.
         Storage   The S3 bucket that uploaded import files go to.
         KRDS      The KRDS Data Bridge, asked through its own /health.
+        KRDS read Whether cleanse can read the Data Bridge with its key: the latest-snapshot read
+                  API a rule run calls. Only a genuine connection passes.
 
-    The last three are read from /v1/diagnostics, which reports each dependency as ok, failed
+    The last four are read from /v1/diagnostics, which reports each dependency as ok, failed
     or unknown. Unknown is a warning: usually configuration that has not been set yet.
 
     Keys are read from the User environment first, so a key replaced in Windows settings is
@@ -234,7 +236,7 @@ function Invoke-Checks {
     $script:diagnosticsBody = $diagnostics.Body
     $report = $diagnostics.Body | ConvertFrom-Json
 
-    $dependencies = [ordered]@{ Database = 'database'; Storage = 'storage'; KRDS = 'krds' }
+    $dependencies = [ordered]@{ Database = 'database'; Storage = 'storage'; KRDS = 'krds'; 'KRDS read' = 'krdsAccess' }
     foreach ($label in $dependencies.Keys) {
         $property = $report.PSObject.Properties[$dependencies[$label]]
         if ($null -eq $property) {
