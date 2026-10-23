@@ -20,6 +20,7 @@ public sealed record GetDiagnosticsQuery(string? GroupId) : IQuery<DiagnosticsDt
 /// so they reach OpenSearch, and reported as state rather than thrown.
 /// </summary>
 internal sealed class GetDiagnosticsQueryHandler(
+    ServiceInfo service,
     IIssueStore issues,
     IDataResetStore resets,
     IStorageDiagnostics database,
@@ -49,6 +50,7 @@ internal sealed class GetDiagnosticsQueryHandler(
         var lastReset = await LastResetAsync(cancellationToken);
 
         return new DiagnosticsDto(
+            service.ToDto(),
             ToDto(database.ProviderName, database.Target, databaseProbe),
             ToDto(files?.ProviderName ?? "unknown", files?.Target, await storageProbe),
             ToDto(krds?.ProviderName ?? "unknown", krds?.Target, await krdsProbe),

@@ -121,16 +121,29 @@ public sealed record IssueCountsDto(
     IReadOnlyList<IssueStatusCountDto> Breakdown);
 
 /// <summary>
-/// Everything an operator needs to see at a glance. <see cref="Database"/> is the issue store,
-/// <see cref="Storage"/> is where uploaded import files are kept, and <see cref="Krds"/> is the
-/// source the rules engine reads.
+/// Everything an operator needs to see at a glance. <see cref="Service"/> says which build is
+/// answering, <see cref="Database"/> is the issue store, <see cref="Storage"/> is where uploaded
+/// import files are kept, and <see cref="Krds"/> is the source the rules engine reads.
 /// </summary>
 public sealed record DiagnosticsDto(
+    ServiceInfoDto Service,
     DependencyDto Database,
     DependencyDto Storage,
     DependencyDto Krds,
     IssueCountsDto Issues,
     DateTimeOffset? LastResetAtUtc);
+
+/// <summary>
+/// Which build is answering, and where. <see cref="Version"/> and <see cref="Environment"/> come
+/// from SERVICE_VERSION and ENVIRONMENT, which CDP injects into every container; both are null
+/// when unset, as they are when running locally.
+/// </summary>
+public sealed record ServiceInfoDto(
+    string Name,
+    string? Version,
+    string? Environment,
+    string Runtime,
+    DateTimeOffset StartedAtUtc);
 
 public sealed record GroupSummaryDto(
     string GroupId,

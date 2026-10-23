@@ -223,6 +223,7 @@ produces a `failed` state, not a `500`. Failures are logged at warning so they r
 
 | Field | Checks | `target` |
 | --- | --- | --- |
+| `service` | Not a check: which build answered. `name`, `version` and `environment` (from `SERVICE_VERSION` and `ENVIRONMENT`, which CDP injects into every container; `null` locally), `runtime` and `startedAtUtc`. | — |
 | `database` | Counts issues in the issue store. | `host:port/database` |
 | `storage` | Where uploaded import files go. On S3 a `HeadBucket` with the service's own credentials, which proves the bucket exists and can be reached without writing anything; in Development the local directory. No bucket configured is `failed`, because every upload is then refused. | The bucket name, or the directory |
 | `krds` | For the Data Bridge, a `GET /health` against the bridge's own anonymous health endpoint, sent without the API key. `Healthy` and `Degraded` (both `200`) are `ok`; `Unhealthy` (`503`), any other error status, no answer or no connection is `failed`, and any check the bridge reports as not healthy is named. A missing API key is noted in the detail. For a local snapshot, the file on disk. | The bridge's **host name only**, or the snapshot path |
