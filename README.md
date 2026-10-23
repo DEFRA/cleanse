@@ -215,11 +215,24 @@ so a running run always reports a current answer.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/diagnostics` | Dependency health, issue counts by both axes, and the last reset. |
+| `GET` | `/v1/diagnostics` | Database, import storage and KRDS health, issue counts by both axes, and the last reset. |
 
 Built for a status page, so it answers even when the things it reports on do not. Each probe is
 independent and returns `ok`, `failed` or `unknown` with a reason; a dependency that is down
 produces a `failed` state, not a `500`. Failures are logged at warning so they reach OpenSearch.
+
+| Field | Checks | `target` |
+| --- | --- | --- |
+| `database` | Counts issues in the issue store. | `host:port/database` |
+| `storage` | Where uploaded import files go. On S3 a `HeadBucket` with the service's own credentials, which proves the bucket exists and can be reached without writing anything; in Development the local directory. No bucket configured is `failed`, because every upload is then refused. | The bucket name, or the directory |
+| `krds` | For the Data Bridge, a `GET /health` against the bridge's own anonymous health endpoint, sent without the API key. `Healthy` and `Degraded` (both `200`) are `ok`; `Unhealthy` (`503`), any other error status, no answer or no connection is `failed`, and any check the bridge reports as not healthy is named. A missing API key is noted in the detail. For a local snapshot, the file on disk. | The bridge's **host name only**, or the snapshot path |
+
+The storage and KRDS probes run alongside the database queries and each gives up after 10 seconds,
+so one slow dependency cannot run the request into its timeout.
+
+```bash
+curl -H 'x-cleanse-api-key: local-development-key' http://localhost:8085/v1/diagnostics
+```
 
 `lastResetAtUtc` comes from a `data_resets` table that the reset deliberately does not clear —
 a table the wipe empties cannot answer when the wipe happened.
@@ -538,7 +551,7 @@ variables with `__` for nesting (`Storage__Postgres__Host`). Production values c
 | `StaleAfter` | `00:15:00` | Heartbeat gap after which a run is presumed dead and abandoned. |
 | `Krds:Provider` | `DataBridge` | `DataBridge` or `LocalFile`. |
 | `Krds:LocalFilePath` | *(unset)* | Required for `LocalFile`. |
-| `Krds:BaseUrl` | *(unset)* | Required for `DataBridge`, e.g. `https://ls-keeper-data-bridge-backend.dev.cdp-int.defra.cloud`. |
+| `Krds:BaseUrl` | *(unset)* | Required for `DataBridge`, e.g. `https://ls-keeper-data-bridge-backend.dev.cdp-int.defra.cloud`. `/v1/diagnostics` pings its `/health` and shows only its host name. |
 | `Krds:ApiKey` | *(unset)* | The **bare** key; the `ApiKey` scheme is added by the client. A Portal secret. |
 | `Krds:DownloadUrlExpiryMinutes` | `30` | Presigned URL lifetime. The Data Bridge caps this at 60. |
 | `Krds:DownloadTimeout` | `00:20:00` | The snapshot runs to the better part of a gigabyte. |

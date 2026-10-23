@@ -26,6 +26,14 @@ public static class KrdsServiceCollectionExtensions
         services.TryAddSingleton(options);
         services.TryAddSingleton<ICtsSamDataSourceFactory, KrdsCtsSamDataSourceFactory>();
 
+        // The bridge's health check is anonymous, so the probe can ask it as soon as there is a
+        // bridge to ask, even while the key or the rest of the configuration is still missing.
+        if (options.ResolveProvider() is KrdsSnapshotProvider.DataBridge)
+        {
+            services.AddHttpClient(KrdsDiagnostics.HealthClientName, client =>
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json")));
+        }
+
         // Registered whatever the outcome below: a status page is most useful when the thing it
         // reports on is misconfigured, so the probe must exist even when the source does not.
         services.TryAddSingleton<IKrdsDiagnostics>(provider => new KrdsDiagnostics(
