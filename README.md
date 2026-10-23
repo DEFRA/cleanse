@@ -234,6 +234,22 @@ so one slow dependency cannot run the request into its timeout.
 curl -H 'x-cleanse-api-key: local-development-key' http://localhost:8085/v1/diagnostics
 ```
 
+To check a deployed environment from the DEFRA network,
+[scripts/check-remote-health.ps1](scripts/check-remote-health.ps1) calls `/health` and
+`/v1/diagnostics` through CDP's developer ephemeral gateway and reports each as `PASS`, `WARN` or
+`FAIL`, exiting `1` on any failure:
+
+```powershell
+./scripts/check-remote-health.ps1                         # dev
+./scripts/check-remote-health.ps1 -Environment ext-test -ServiceKeyVariable CLEANSE_APIKEY_EXTTEST
+```
+
+It sends two keys, read from User environment variables so a renewed key needs no new terminal:
+`CDP_EPHEMERAL_GW_KEY`, a developer key from your Portal profile that lasts 24 hours and works only
+in the environment it was issued for, and `CLEANSE_APIKEY`, the service's `Auth__ApiKey__Key`
+secret for that environment. A `403` means the gateway refused the developer key; a `401` means
+cleanse refused its own key. Developer keys are personal, so this is for people, not pipelines.
+
 `lastResetAtUtc` comes from a `data_resets` table that the reset deliberately does not clear —
 a table the wipe empties cannot answer when the wipe happened.
 
