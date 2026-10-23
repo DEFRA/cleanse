@@ -45,6 +45,10 @@ internal sealed class GetDiagnosticsQueryHandler(
             ? Task.FromResult(ProbeResult.Unknown("The rules engine is not registered in this host."))
             : ProbeAsync("krds", krds.ProbeAsync, cancellationToken);
 
+        var krdsAccessProbe = krds is null
+            ? Task.FromResult(ProbeResult.Unknown("The rules engine is not registered in this host."))
+            : ProbeAsync("krds-access", krds.ProbeAccessAsync, cancellationToken);
+
         var databaseProbe = await ProbeAsync("database", database.ProbeAsync, cancellationToken);
         var counts = await CountIssuesAsync(query.GroupId, cancellationToken);
         var lastReset = await LastResetAsync(cancellationToken);
@@ -54,6 +58,7 @@ internal sealed class GetDiagnosticsQueryHandler(
             ToDto(database.ProviderName, database.Target, databaseProbe),
             ToDto(files?.ProviderName ?? "unknown", files?.Target, await storageProbe),
             ToDto(krds?.ProviderName ?? "unknown", krds?.Target, await krdsProbe),
+            ToDto(krds?.ProviderName ?? "unknown", krds?.Target, await krdsAccessProbe),
             counts,
             lastReset);
     }

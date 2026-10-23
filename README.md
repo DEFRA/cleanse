@@ -215,7 +215,7 @@ so a running run always reports a current answer.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/diagnostics` | Database, import storage and KRDS health, issue counts by both axes, and the last reset. |
+| `GET` | `/v1/diagnostics` | Database, import storage and KRDS health and read access, issue counts by both axes, and the last reset. |
 
 Built for a status page, so it answers even when the things it reports on do not. Each probe is
 independent and returns `ok`, `failed` or `unknown` with a reason; a dependency that is down
@@ -226,10 +226,13 @@ produces a `failed` state, not a `500`. Failures are logged at warning so they r
 | `service` | Not a check: which build answered. `name`, `version` and `environment` (from `SERVICE_VERSION` and `ENVIRONMENT`, which CDP injects into every container; `null` locally), `runtime` and `startedAtUtc`. | — |
 | `database` | Counts issues in the issue store. | `host:port/database` |
 | `storage` | Where uploaded import files go. On S3 a `HeadBucket` with the service's own credentials, which proves the bucket exists and can be reached without writing anything; in Development the local directory. No bucket configured is `failed`, because every upload is then refused. | The bucket name, or the directory |
-| `krds` | For the Data Bridge, a `GET /health` against the bridge's own anonymous health endpoint, sent without the API key. `Healthy` and `Degraded` (both `200`) are `ok`; `Unhealthy` (`503`), any other error status, no answer or no connection is `failed`, and any check the bridge reports as not healthy is named. A missing API key is noted in the detail. For a local snapshot, the file on disk. | The bridge's **host name only**, or the snapshot path |
+| `krds` | For the Data Bridge, a `GET /health` against the bridge's own anonymous health endpoint, sent without the API key. `Healthy` and `Degraded` (both `200`) are `ok`; `Unhealthy` (`503`), any other error status, no answer or no connection is `failed`, and any check the bridge reports as not healthy is named. For a local snapshot, the file on disk. | The bridge's **host name only**, or the snapshot path |
+| `krdsAccess` | Whether KRDS can actually be read, as a rule run reads it. For the Data Bridge, `GET /api/etl/staging/sqlite/latest?expiresInMinutes=1` with `Authorization: ApiKey <key>`: `ok` only when the key is accepted and a snapshot is offered for download, and the detail names that snapshot, its size and when it was last modified. A refused key (`401`), no snapshot (`404`, with the bridge's own explanation), any other error, no answer or no key configured is `failed`. The presigned download URL is never downloaded, shown or logged, and is asked for with the shortest lifetime the bridge allows. For a local snapshot, the file is opened read-only, as a run opens it, and its tables are counted. | As `krds` |
 
 The storage and KRDS probes run alongside the database queries and each gives up after 10 seconds,
-so one slow dependency cannot run the request into its timeout.
+so one slow dependency cannot run the request into its timeout. The health check can pass while
+the access check fails — a bridge that is up but refuses this service's key is exactly the case
+the access check exists to catch.
 
 ```bash
 curl -H 'x-cleanse-api-key: local-development-key' http://localhost:8085/v1/diagnostics
@@ -499,7 +502,7 @@ do:
 | --- | --- | --- |
 | `Auth__ApiKey__Key` | `cleanse` | Must equal the frontend's `CLEANSE_API_KEY`. |
 | `Auth__Reset__Key` | `cleanse` | Guards the destructive reset. Leave unset to disable it. |
-| `Rules__Krds__ApiKey` | `cleanse` | Issued by the KRDS team, not generated. |
+| `Rules__Krds__ApiKey` | `cleanse` | Issued by the KRDS team, not generated. The status page's KRDS read access check shows whether the bridge accepts it. |
 | `SESSION_COOKIE_PASSWORD` | `cleanse-app` | At least 32 characters. |
 | `CLEANSE_API_KEY` | `cleanse-app` | Only used when the frontend is set to key auth; the deployed default is an STS web identity token, which needs no secret. |
 
@@ -568,7 +571,7 @@ variables with `__` for nesting (`Storage__Postgres__Host`). Production values c
 | `StaleAfter` | `00:15:00` | Heartbeat gap after which a run is presumed dead and abandoned. |
 | `Krds:Provider` | `DataBridge` | `DataBridge` or `LocalFile`. |
 | `Krds:LocalFilePath` | *(unset)* | Required for `LocalFile`. |
-| `Krds:BaseUrl` | *(unset)* | Required for `DataBridge`, e.g. `https://ls-keeper-data-bridge-backend.dev.cdp-int.defra.cloud`. `/v1/diagnostics` pings its `/health` and shows only its host name. |
+| `Krds:BaseUrl` | *(unset)* | Required for `DataBridge`, e.g. `https://ls-keeper-data-bridge-backend.dev.cdp-int.defra.cloud`. `/v1/diagnostics` pings its `/health`, reads its latest snapshot with the key, and shows only its host name. |
 | `Krds:ApiKey` | *(unset)* | The **bare** key; the `ApiKey` scheme is added by the client. A Portal secret. |
 | `Krds:DownloadUrlExpiryMinutes` | `30` | Presigned URL lifetime. The Data Bridge caps this at 60. |
 | `Krds:DownloadTimeout` | `00:20:00` | The snapshot runs to the better part of a gigabyte. |

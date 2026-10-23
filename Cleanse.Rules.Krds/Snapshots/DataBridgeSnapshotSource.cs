@@ -42,6 +42,9 @@ internal sealed class DataBridgeSnapshotSource(
     internal const string DownloadClientName = "krds-snapshot-download";
     internal const string LatestPath = "api/etl/staging/sqlite/latest";
 
+    /// <summary>The Data Bridge reads <c>Authorization: ApiKey &lt;key&gt;</c>.</summary>
+    internal const string AuthorizationScheme = "ApiKey";
+
     public string Description => $"KRDS Data Bridge {options.BaseUrl}";
 
     public async Task<KrdsSnapshot> AcquireAsync(CancellationToken cancellationToken = default)
@@ -80,7 +83,7 @@ internal sealed class DataBridgeSnapshotSource(
         var url = $"{LatestPath}?expiresInMinutes={expiry.ToString(CultureInfo.InvariantCulture)}";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("ApiKey", options.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue(AuthorizationScheme, options.ApiKey);
 
         using var response = await client.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
