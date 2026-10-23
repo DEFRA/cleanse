@@ -28,6 +28,17 @@ public class DiagnosticsEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
         Assert.Equal("ok", database.GetProperty("state").GetString());
     }
 
+    /// <summary>The test host runs as Development, where uploads go to a local directory.</summary>
+    [Fact]
+    public async Task Diagnostics_reports_where_import_files_are_kept()
+    {
+        var storage = (await GetAsync()).GetProperty("storage");
+
+        Assert.Equal("FileSystem", storage.GetProperty("provider").GetString());
+        Assert.Equal("ok", storage.GetProperty("state").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(storage.GetProperty("target").GetString()));
+    }
+
     /// <summary>
     /// The test host points KRDS at a snapshot that is not there, which is exactly the case that
     /// must be reported with a reason rather than thrown or quietly claimed as healthy.
@@ -49,6 +60,7 @@ public class DiagnosticsEndpointTests(ApiFactory factory) : IClassFixture<ApiFac
 
         // The KRDS probe above is failing, yet everything else still answers.
         Assert.Equal("ok", body.GetProperty("database").GetProperty("state").GetString());
+        Assert.Equal("ok", body.GetProperty("storage").GetProperty("state").GetString());
         Assert.Equal("ok", body.GetProperty("issues").GetProperty("state").GetString());
     }
 

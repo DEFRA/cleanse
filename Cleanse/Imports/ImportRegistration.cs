@@ -30,6 +30,7 @@ public static class ImportRegistration
                 : options.FileStoreRoot;
 
             services.TryAddSingleton<IImportFileStore>(_ => new FileSystemImportFileStore(root));
+            services.TryAddSingleton<IImportStorageDiagnostics>(_ => new FileSystemImportStorageDiagnostics(root));
         }
         else if (string.IsNullOrWhiteSpace(options.S3BucketName))
         {
@@ -39,12 +40,16 @@ public static class ImportRegistration
                 "Imports:S3BucketName is not configured. Uploads will be rejected until it is set.");
 
             services.TryAddSingleton<IImportFileStore>(_ => new UnconfiguredImportFileStore());
+            services.TryAddSingleton<IImportStorageDiagnostics>(_ => new UnconfiguredImportStorageDiagnostics());
         }
         else
         {
             services.TryAddSingleton<IAmazonS3>(_ => new AmazonS3Client());
             services.TryAddSingleton<IImportFileStore>(provider =>
                 new S3ImportFileStore(
+                    provider.GetRequiredService<IAmazonS3>(), options.S3BucketName));
+            services.TryAddSingleton<IImportStorageDiagnostics>(provider =>
+                new S3ImportStorageDiagnostics(
                     provider.GetRequiredService<IAmazonS3>(), options.S3BucketName));
         }
 

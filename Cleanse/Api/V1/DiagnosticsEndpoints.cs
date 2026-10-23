@@ -13,11 +13,13 @@ public static class DiagnosticsEndpoints
 
         group.MapGet(string.Empty, Get)
             .WithName("GetDiagnostics")
-            .WithSummary("Dependency health, issue counts and the last reset.")
+            .WithSummary("Database, import storage and KRDS health, issue counts and the last reset.")
             .WithDescription(
                 "Never fails because a dependency has. Each probe reports 'ok', 'failed' or " +
                 "'unknown' with a reason, so a status page can render a complete picture of a " +
-                "partly broken service.")
+                "partly broken service. 'database' queries the issue store, 'storage' checks the " +
+                "import bucket can be reached, and 'krds' calls the KRDS Data Bridge's own /health " +
+                "endpoint and names only its host.")
             .Produces<DiagnosticsDto>();
 
         return group;

@@ -120,8 +120,14 @@ public sealed record IssueCountsDto(
     int Total,
     IReadOnlyList<IssueStatusCountDto> Breakdown);
 
+/// <summary>
+/// Everything an operator needs to see at a glance. <see cref="Database"/> is the issue store,
+/// <see cref="Storage"/> is where uploaded import files are kept, and <see cref="Krds"/> is the
+/// source the rules engine reads.
+/// </summary>
 public sealed record DiagnosticsDto(
     DependencyDto Database,
+    DependencyDto Storage,
     DependencyDto Krds,
     IssueCountsDto Issues,
     DateTimeOffset? LastResetAtUtc);

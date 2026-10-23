@@ -28,6 +28,18 @@ public interface IKrdsDiagnostics
     Task<ProbeResult> ProbeAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>The same contract for wherever uploaded import files are kept.</summary>
+public interface IImportStorageDiagnostics
+{
+    /// <summary>The store in use, for display: <c>S3</c> or <c>FileSystem</c>.</summary>
+    string ProviderName { get; }
+
+    /// <summary>The bucket or directory. Null when none is configured.</summary>
+    string? Target { get; }
+
+    Task<ProbeResult> ProbeAsync(CancellationToken cancellationToken = default);
+}
+
 public enum ProbeState
 {
     /// <summary>Checked, and working.</summary>
