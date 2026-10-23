@@ -99,6 +99,16 @@ $frontend = [ordered]@{
         Value = $sharedApiKey
         Note  = 'The same value as the backend Auth__ApiKey__Key. Only used when CLEANSE_API_AUTH is apiKey; the deployed default is the STS web identity token, which needs no secret.'
     }
+    # People type or paste these, so they are shorter than the machine keys; 18 bytes gives 24
+    # characters, still far beyond guessing.
+    'PASSWORD'                = @{
+        Value = New-Secret -Bytes 18
+        Note  = 'The password everyone signs in to the frontend with. Share it only with the people who use the service.'
+    }
+    'ADMIN_PASSWORD'          = @{
+        Value = New-Secret -Bytes 18
+        Note  = 'The second password the /admin area asks for, after PASSWORD. Share it only with the people who run the service.'
+    }
 }
 
 $external = [ordered]@{

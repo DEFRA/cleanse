@@ -505,6 +505,8 @@ do:
 | `Rules__Krds__ApiKey` | `cleanse` | Issued by the KRDS team, not generated. The status page's KRDS read access check shows whether the bridge accepts it. |
 | `SESSION_COOKIE_PASSWORD` | `cleanse-app` | At least 32 characters. |
 | `CLEANSE_API_KEY` | `cleanse-app` | Only used when the frontend is set to key auth; the deployed default is an STS web identity token, which needs no secret. |
+| `PASSWORD` | `cleanse-app` | The password everyone signs in to the frontend with. Until it is set, nobody can sign in. |
+| `ADMIN_PASSWORD` | `cleanse-app` | The second password the frontend's `/admin` area asks for. Until it is set, the admin area cannot be opened. |
 
 ## Configuration reference
 
