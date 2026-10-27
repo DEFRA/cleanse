@@ -15,6 +15,9 @@ namespace Cleanse.Storage.Postgres.Stores;
 /// </summary>
 internal static class IssueFilterSql
 {
+    private static readonly string Whitespace = string.Concat(
+        Enumerable.Range(char.MinValue, char.MaxValue + 1).Select(value => (char)value).Where(char.IsWhiteSpace));
+
     internal sealed record Clause(string Sql, IReadOnlyList<NpgsqlParameter> Parameters)
     {
         public void AddParameters(NpgsqlCommand command)
@@ -72,11 +75,17 @@ internal static class IssueFilterSql
             Add($"LOWER({Db.Issue.AssignedTo}) = LOWER(@f_assignee)", "f_assignee", assignee);
         }
 
+        if (filter.AssignedUserId is { } userId)
+        {
+            Add($"{Db.Issue.AssignedUserId} = @f_user", "f_user", userId, NpgsqlDbType.Uuid);
+        }
+
         if (filter.Unassigned is { } unassigned)
         {
+            parameters.Add(new NpgsqlParameter("f_whitespace", Whitespace));
             predicates.Add(unassigned
-                ? $"({Db.Issue.AssignedTo} IS NULL OR {Db.Issue.AssignedTo} = '')"
-                : $"({Db.Issue.AssignedTo} IS NOT NULL AND {Db.Issue.AssignedTo} <> '')");
+                ? $"({Db.Issue.AssignedUserId} IS NULL AND ({Db.Issue.AssignedTo} IS NULL OR BTRIM({Db.Issue.AssignedTo}, @f_whitespace) = ''))"
+                : $"({Db.Issue.AssignedUserId} IS NOT NULL OR BTRIM({Db.Issue.AssignedTo}, @f_whitespace) <> '')");
         }
 
         if (filter.CreatedAfterUtc is { } createdAfter)

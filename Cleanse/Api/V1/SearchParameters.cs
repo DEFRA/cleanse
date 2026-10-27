@@ -72,12 +72,31 @@ public sealed record IssueSearchParameters(
     [FromQuery(Name = "sortBy")] string? SortBy,
     [FromQuery(Name = "sortDirection")] string? SortDirection,
     [FromQuery(Name = "pageNumber")] int? PageNumber,
-    [FromQuery(Name = "pageSize")] int? PageSize)
+    [FromQuery(Name = "pageSize")] int? PageSize,
+    [FromQuery(Name = "assignedUserId")] string? AssignedUserId = null)
 {
     public bool TryBuildFilter(out IssueFilter filter, out string? error)
     {
         filter = new IssueFilter();
         error = null;
+
+        Guid? assignedUserId = null;
+        if (AssignedUserId is not null)
+        {
+            if (!Guid.TryParse(AssignedUserId, out var parsedId) || parsedId == Guid.Empty)
+            {
+                error = "assignedUserId must be a nonempty GUID.";
+                return false;
+            }
+
+            assignedUserId = parsedId;
+        }
+
+        if (Unassigned == true && (assignedUserId is not null || !string.IsNullOrWhiteSpace(AssignedTo)))
+        {
+            error = "unassigned=true cannot be combined with an assignee filter.";
+            return false;
+        }
 
         IssueStatus? status = null;
         if (!string.IsNullOrWhiteSpace(Status))
@@ -131,7 +150,8 @@ public sealed record IssueSearchParameters(
             Status = status,
             WorkflowStatuses = workflowStatuses,
             AssignedTo = Blank(AssignedTo),
-            Unassigned = Unassigned,
+            AssignedUserId = assignedUserId,
+            Unassigned = Unassigned == true ? true : null,
             SearchTerm = Blank(SearchTerm),
             CreatedAfterUtc = CreatedAfterUtc,
             CreatedBeforeUtc = CreatedBeforeUtc,

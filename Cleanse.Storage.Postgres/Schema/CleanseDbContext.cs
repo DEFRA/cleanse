@@ -23,6 +23,7 @@ public sealed class CleanseDbContext(DbContextOptions<CleanseDbContext> options)
     internal DbSet<ImportJobRejectionRow> ImportJobRejections => Set<ImportJobRejectionRow>();
 
     internal DbSet<DataResetRow> DataResets => Set<DataResetRow>();
+    internal DbSet<UserRow> Users => Set<UserRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,7 +38,27 @@ public sealed class CleanseDbContext(DbContextOptions<CleanseDbContext> options)
         ConfigureIssueHistory(modelBuilder);
         ConfigureImportJobs(modelBuilder);
         ConfigureDataResets(modelBuilder);
+        ConfigureUsers(modelBuilder);
     }
+
+    private static void ConfigureUsers(ModelBuilder modelBuilder) =>
+        modelBuilder.Entity<UserRow>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.Issuer).HasColumnName("issuer").HasMaxLength(512);
+            entity.Property(e => e.Subject).HasColumnName("subject").HasMaxLength(256);
+            entity.Property(e => e.TenantId).HasColumnName("tenant_id").HasMaxLength(64);
+            entity.Property(e => e.ObjectId).HasColumnName("object_id").HasMaxLength(64);
+            entity.Property(e => e.ClientId).HasColumnName("client_id").HasMaxLength(64);
+            entity.Property(e => e.FullName).HasColumnName("full_name").HasMaxLength(256);
+            entity.Property(e => e.FirstLoggedInAtUtc).HasColumnName("first_logged_in_at_utc");
+            entity.Property(e => e.LastLoggedInAtUtc).HasColumnName("last_logged_in_at_utc");
+            entity.HasIndex(e => new { e.Issuer, e.ClientId, e.Subject })
+                .IsUnique().HasDatabaseName("ux_users_identity");
+            entity.HasIndex(e => new { e.TenantId, e.ClientId, e.Id }).HasDatabaseName("ix_users_scope");
+        });
 
     /// <summary>
     /// Deliberately outside the reset's blast radius: a table the wipe empties cannot answer
@@ -85,6 +106,10 @@ public sealed class CleanseDbContext(DbContextOptions<CleanseDbContext> options)
             entity.Property(e => e.Status).HasColumnName(Db.Issue.Status);
             entity.Property(e => e.WorkflowStatus).HasColumnName(Db.Issue.WorkflowStatus);
             entity.Property(e => e.AssignedTo).HasColumnName(Db.Issue.AssignedTo);
+            entity.Property(e => e.AssignedUserId).HasColumnName(Db.Issue.AssignedUserId);
+            entity.Property(e => e.AssignedUserFullName).HasColumnName(Db.Issue.AssignedUserFullName);
+            entity.HasOne<UserRow>().WithMany().HasForeignKey(e => e.AssignedUserId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Property(e => e.Notes).HasColumnName(Db.Issue.Notes);
             entity.Property(e => e.ExternalNotes).HasColumnName(Db.Issue.ExternalNotes);
             entity.Property(e => e.Priority).HasColumnName(Db.Issue.Priority);
@@ -231,6 +256,8 @@ public sealed class CleanseDbContext(DbContextOptions<CleanseDbContext> options)
     {
         modelBuilder.Entity<ImportJobRow>(entity =>
         {
+            entity.Property(e => e.TenantId).HasColumnName("tenant_id");
+            entity.Property(e => e.ClientId).HasColumnName("client_id");
             entity.ToTable(Db.ImportJobs, table => table.HasCheckConstraint(
                 "ck_import_jobs_status",
                 "status IN ('Pending', 'Processing', 'Completed', 'Failed', 'Abandoned')"));

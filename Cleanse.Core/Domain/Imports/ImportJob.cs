@@ -40,7 +40,9 @@ public sealed record ImportJobSnapshot(
     DateTimeOffset? FinishedAtUtc,
     DateTimeOffset? HeartbeatAtUtc,
     string? FailureReason,
-    int Version);
+    int Version,
+    string? TenantId = null,
+    string? ClientId = null);
 
 /// <summary>
 /// One upload of an external extract. Tracks progress so a long import can be watched from the
@@ -62,7 +64,9 @@ public sealed class ImportJob
         DateTimeOffset? finishedAtUtc,
         DateTimeOffset? heartbeatAtUtc,
         string? failureReason,
-        int version)
+        int version,
+        string? tenantId = null,
+        string? clientId = null)
     {
         Id = id;
         GroupId = groupId;
@@ -77,6 +81,8 @@ public sealed class ImportJob
         HeartbeatAtUtc = heartbeatAtUtc;
         FailureReason = failureReason;
         Version = version;
+        TenantId = tenantId;
+        ClientId = clientId;
     }
 
     public Guid Id { get; }
@@ -86,6 +92,10 @@ public sealed class ImportJob
     public string FileName { get; }
 
     public string BlobKey { get; }
+
+    public string? TenantId { get; }
+
+    public string? ClientId { get; }
 
     public ImportJobStatus Status { get; private set; }
 
@@ -115,7 +125,9 @@ public sealed class ImportJob
         string blobKey,
         string requestedBy,
         int totalRows,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        string? tenantId = null,
+        string? clientId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(groupId);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
@@ -136,7 +148,9 @@ public sealed class ImportJob
             finishedAtUtc: null,
             heartbeatAtUtc: null,
             failureReason: null,
-            version: 1);
+            version: 1,
+            tenantId: tenantId,
+            clientId: clientId);
     }
 
     public static ImportJob FromSnapshot(ImportJobSnapshot snapshot)
@@ -155,12 +169,14 @@ public sealed class ImportJob
             snapshot.FinishedAtUtc,
             snapshot.HeartbeatAtUtc,
             snapshot.FailureReason,
-            snapshot.Version);
+            snapshot.Version,
+            snapshot.TenantId,
+            snapshot.ClientId);
     }
 
     public ImportJobSnapshot ToSnapshot() => new(
         Id, GroupId, FileName, BlobKey, Status, Counters, RequestedBy,
-        CreatedAtUtc, StartedAtUtc, FinishedAtUtc, HeartbeatAtUtc, FailureReason, Version);
+        CreatedAtUtc, StartedAtUtc, FinishedAtUtc, HeartbeatAtUtc, FailureReason, Version, TenantId, ClientId);
 
     public Result<ImportJob> Start(DateTimeOffset now)
     {
@@ -259,4 +275,7 @@ public static class ImportRejectionReasons
 {
     public const string IssueNotFound = "issue_not_found";
     public const string InvalidRow = "invalid_row";
+    public const string AssigneeUnmatched = "assignee_unmatched";
+    public const string AssigneeAmbiguous = "assignee_ambiguous";
+    public const string AssigneeScopeMissing = "assignee_scope_missing";
 }

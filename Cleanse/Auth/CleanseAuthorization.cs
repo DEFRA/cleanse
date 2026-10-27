@@ -5,6 +5,7 @@ namespace Cleanse.Auth;
 public static class CleansePolicies
 {
     public const string Default = "cleanse";
+    public const string UserDirectory = "cleanse-user-directory";
 }
 
 /// <summary>
@@ -66,10 +67,12 @@ public static class CleanseAuthorizationExtensions
 {
     public static IServiceCollection AddCleanseAuthorization(
         this IServiceCollection services,
-        CleanseAuthOptions options)
+        CleanseAuthOptions options,
+        IHostEnvironment environment)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(environment);
 
         services.AddSingleton<IAuthorizationHandler, AllowedCallerHandler>();
 
@@ -79,6 +82,17 @@ public static class CleanseAuthorizationExtensions
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         services.AddAuthorizationBuilder()
+            .AddPolicy(CleansePolicies.UserDirectory, policy =>
+            {
+                policy.RequireAuthenticatedUser();
+                policy.RequireAssertion(context =>
+                    context.User.FindFirst(CleanseClaims.CallerKind)?.Value != CleanseClaims.ApiKeyCaller ||
+                    environment.IsDevelopment() ||
+                    (options.UserDirectory.AllowLocalApiKey &&
+                     string.Equals(options.ApiKey.ClientName, "cleanse-app", StringComparison.Ordinal)));
+                policy.AddRequirements(new AllowedCallerRequirement(
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cleanse-app" }));
+            })
             .AddPolicy(CleansePolicies.Default, policy =>
             {
                 policy.RequireAuthenticatedUser();

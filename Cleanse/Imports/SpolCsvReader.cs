@@ -103,6 +103,8 @@ public sealed class SpolCsvReader
             RuleNo = ruleNo,
             Status = Field(csv, "Status"),
             Notes = Field(csv, "Notes"),
+            HasAssignee = csv.HeaderRecord?.Contains("Assigned to", StringComparer.OrdinalIgnoreCase) == true,
+            AssignedTo = Field(csv, "Assigned to"),
             Priority = Field(csv, "Priority"),
             DateReceived = TryDate(Field(csv, "Date Received"), out var received) ? received : null,
             DateComplete = TryDate(Field(csv, "Date Complete"), out var complete) ? complete : null,
@@ -111,7 +113,9 @@ public sealed class SpolCsvReader
     }
 
     private static string? Field(IReaderRow csv, string column) =>
-        csv.TryGetField<string>(column, out var value) && !string.IsNullOrWhiteSpace(value)
+        csv.TryGetField<string>(
+            csv.HeaderRecord?.FirstOrDefault(header => string.Equals(header, column, StringComparison.OrdinalIgnoreCase)) ?? column,
+            out var value) && !string.IsNullOrWhiteSpace(value)
             ? value.Trim()
             : null;
 
@@ -145,6 +149,10 @@ public sealed record SpolRow
     public string? Status { get; init; }
 
     public string? Notes { get; init; }
+
+    public bool HasAssignee { get; init; }
+
+    public string? AssignedTo { get; init; }
 
     public string? Priority { get; init; }
 

@@ -23,6 +23,8 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
             {Db.Issue.Status} = EXCLUDED.{Db.Issue.Status},
             {Db.Issue.WorkflowStatus} = EXCLUDED.{Db.Issue.WorkflowStatus},
             {Db.Issue.AssignedTo} = EXCLUDED.{Db.Issue.AssignedTo},
+            {Db.Issue.AssignedUserId} = EXCLUDED.{Db.Issue.AssignedUserId},
+            {Db.Issue.AssignedUserFullName} = EXCLUDED.{Db.Issue.AssignedUserFullName},
             {Db.Issue.Notes} = EXCLUDED.{Db.Issue.Notes},
             {Db.Issue.ExternalNotes} = EXCLUDED.{Db.Issue.ExternalNotes},
             {Db.Issue.Priority} = EXCLUDED.{Db.Issue.Priority},
@@ -181,6 +183,15 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
                 await writer.WriteAsync(row.ActivatedAtUtc, NpgsqlDbType.TimestampTz, cancellationToken);
                 await WriteNullableTimestampAsync(writer, row.DeactivatedAtUtc, cancellationToken);
                 await writer.WriteAsync(row.Version, NpgsqlDbType.Integer, cancellationToken);
+                if (row.AssignedUserId is { } userId)
+                {
+                    await writer.WriteAsync(userId, NpgsqlDbType.Uuid, cancellationToken);
+                }
+                else
+                {
+                    await writer.WriteNullAsync(cancellationToken);
+                }
+                await WriteNullableTextAsync(writer, row.AssignedUserFullName, cancellationToken);
             }
 
             await writer.CompleteAsync(cancellationToken);
@@ -329,7 +340,9 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
         reader.GetFieldValue<DateTimeOffset>(14),
         reader.GetFieldValue<DateTimeOffset>(15),
         reader.IsDBNull(16) ? null : reader.GetFieldValue<DateTimeOffset>(16),
-        reader.GetInt32(17)));
+        reader.GetInt32(17),
+        reader.IsDBNull(18) ? null : reader.GetGuid(18),
+        reader.IsDBNull(19) ? null : reader.GetString(19)));
 
     internal static void AddIssueParameters(NpgsqlCommand command, IssueRow row, string suffix = "")
     {
@@ -362,6 +375,14 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
             Value = (object?)row.DeactivatedAtUtc ?? DBNull.Value
         });
         command.Parameters.AddWithValue(names[17], row.Version);
+        command.Parameters.Add(new NpgsqlParameter(names[18], NpgsqlDbType.Uuid)
+        {
+            Value = (object?)row.AssignedUserId ?? DBNull.Value
+        });
+        command.Parameters.Add(new NpgsqlParameter(names[19], NpgsqlDbType.Text)
+        {
+            Value = (object?)row.AssignedUserFullName ?? DBNull.Value
+        });
     }
 
     /// <summary>
@@ -376,13 +397,14 @@ internal sealed class PostgresIssueStore(CleanseDbContext db, CleansePostgresOpt
             "id", "group_id", "rule_id", "run_id", "status", "workflow_status", "assigned_to",
             "notes", "external_notes", "priority", "external_received_at_utc",
             "suppression_expires_at_utc", "context", "created_at_utc", "updated_at_utc",
-            "activated_at_utc", "deactivated_at_utc", "version"
+            "activated_at_utc", "deactivated_at_utc", "version", "assigned_user_id", "assigned_user_full_name"
         ]
         :
         [
             $"id{suffix}", $"g{suffix}", $"ru{suffix}", $"rn{suffix}", $"s{suffix}", $"w{suffix}",
             $"a{suffix}", $"n{suffix}", $"xn{suffix}", $"p{suffix}", $"xr{suffix}", $"e{suffix}",
-            $"c{suffix}", $"cr{suffix}", $"u{suffix}", $"ac{suffix}", $"de{suffix}", $"v{suffix}"
+            $"c{suffix}", $"cr{suffix}", $"u{suffix}", $"ac{suffix}", $"de{suffix}", $"v{suffix}",
+            $"au{suffix}", $"an{suffix}"
         ];
 
     internal static string IssueValuesClause(string suffix = "") =>

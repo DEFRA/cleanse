@@ -84,6 +84,8 @@ public static class SpolRowMapper
                 IssueId = row.ToIssueId(),
                 WorkflowStatus = MapStatus(row.Status),
                 ExternalNotes = row.Notes,
+                HasAssignee = row.HasAssignee,
+                AssignedTo = row.AssignedTo,
                 Priority = MapPriority(row.Priority),
                 ReceivedAtUtc = row.DateReceived,
                 Contacts = row.Contacts

@@ -73,4 +73,6 @@ public sealed record IssueSnapshot(
     DateTimeOffset UpdatedAtUtc,
     DateTimeOffset ActivatedAtUtc,
     DateTimeOffset? DeactivatedAtUtc,
-    int Version);
+    int Version,
+    Guid? AssignedUserId = null,
+    string? AssignedUserFullName = null);

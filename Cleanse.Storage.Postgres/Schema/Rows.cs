@@ -21,6 +21,10 @@ internal sealed class IssueRow
 
     public string? AssignedTo { get; set; }
 
+    public Guid? AssignedUserId { get; set; }
+
+    public string? AssignedUserFullName { get; set; }
+
     public string? Notes { get; set; }
 
     public string? ExternalNotes { get; set; }
@@ -148,6 +152,10 @@ internal sealed class IssueHistoryRow
 
 internal sealed class ImportJobRow
 {
+    public string? TenantId { get; set; }
+
+    public string? ClientId { get; set; }
+
     public Guid Id { get; set; }
 
     public required string GroupId { get; set; }

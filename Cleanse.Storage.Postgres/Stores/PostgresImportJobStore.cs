@@ -193,11 +193,15 @@ internal sealed class PostgresImportJobStore(CleanseDbContext db) : IImportJobSt
         row.FinishedAtUtc,
         row.HeartbeatAtUtc,
         row.FailureReason,
-        row.Version));
+        row.Version,
+        row.TenantId,
+        row.ClientId));
 
     private static ImportJobRow ToRow(ImportJobSnapshot snapshot) => new()
     {
         Id = snapshot.Id,
+        TenantId = snapshot.TenantId,
+        ClientId = snapshot.ClientId,
         GroupId = snapshot.GroupId,
         FileName = snapshot.FileName,
         BlobKey = snapshot.BlobKey,

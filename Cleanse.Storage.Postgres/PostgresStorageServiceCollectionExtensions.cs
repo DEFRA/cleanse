@@ -58,6 +58,7 @@ public static class PostgresStorageServiceCollectionExtensions
     private static IServiceCollection AddStores(IServiceCollection services)
     {
         services.TryAddScoped<IIssueStore, PostgresIssueStore>();
+        services.TryAddScoped<IUserStore, PostgresUserStore>();
         services.TryAddScoped<IAuditStore, PostgresAuditStore>();
         services.TryAddScoped<IIssueHistoryStore, PostgresIssueHistoryStore>();
         services.TryAddScoped<IRuleRunStore, PostgresRuleRunStore>();

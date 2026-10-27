@@ -22,7 +22,9 @@ public sealed record IssueDto(
     DateTimeOffset UpdatedAtUtc,
     DateTimeOffset ActivatedAtUtc,
     DateTimeOffset? DeactivatedAtUtc,
-    int Version);
+    int Version,
+    Guid? AssignedUserId = null,
+    string? AssignedUserFullName = null);
 
 /// <summary>
 /// Read model for a run. Progress, elapsed time and the projected completion are derived at
@@ -192,4 +194,3 @@ public sealed record ResetResultDto(
     /// <summary>The <see cref="Scope"/> reported when no group was named.</summary>
     public const string AllGroups = "all";
 }
-

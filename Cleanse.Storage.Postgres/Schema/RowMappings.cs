@@ -22,6 +22,8 @@ internal static class RowMappings
         Status = snapshot.Status.ToWire(),
         WorkflowStatus = snapshot.WorkflowStatus.ToWire(),
         AssignedTo = snapshot.AssignedTo,
+        AssignedUserId = snapshot.AssignedUserId,
+        AssignedUserFullName = snapshot.AssignedUserFullName,
         Notes = snapshot.Notes,
         ExternalNotes = snapshot.ExternalNotes,
         Priority = snapshot.Priority?.ToWire(),
@@ -53,7 +55,9 @@ internal static class RowMappings
         row.UpdatedAtUtc,
         row.ActivatedAtUtc,
         row.DeactivatedAtUtc,
-        row.Version));
+        row.Version,
+        row.AssignedUserId,
+        row.AssignedUserFullName));
 
     public static IssuePriority ParsePriority(string value) =>
         StatusNames.TryParsePriority(value, out var priority)

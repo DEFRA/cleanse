@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Cleanse.Api.Contracts;
+using Cleanse.Auth;
 using Cleanse.Core.Abstractions;
 using Cleanse.Core.Commands.History;
 using Cleanse.Core.Commands.Issues;
@@ -9,6 +10,7 @@ using Cleanse.Core.Queries.Audit;
 using Cleanse.Core.Queries.History;
 using Cleanse.Core.Queries.Issues;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace Cleanse.Api.V1;
 
@@ -21,6 +23,7 @@ public static class IssueEndpoints
         group.MapGet(string.Empty, Search)
             .WithName("SearchIssues")
             .WithSummary("Search issues.")
+            .WithDescription("Filter by assignedUserId (nonempty GUID), or unassigned=true for issues with neither a stable user nor nonblank legacy assignee. These filters cannot be combined. Omitted filters or unassigned=false include all assignments.")
             .Produces<PagedResult<IssueDto>>()
             .ProducesProblem(StatusCodes.Status400BadRequest);
         group.MapGet("/{id}", GetById)
@@ -32,6 +35,7 @@ public static class IssueEndpoints
             .WithName("AssignIssue")
             .WithSummary("Assign or unassign an issue.")
             .Produces<IssueDto>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
         group.MapPut("/{id}/notes", SetNotes)
@@ -114,9 +118,35 @@ public static class IssueEndpoints
         string id,
         AssignIssueRequest request,
         ClaimsPrincipal user,
+        IAuthorizationService authorization,
         ICleanseDispatcher dispatcher,
         CancellationToken cancellationToken)
     {
+        if (request.HasUserId)
+        {
+            if (!(await authorization.AuthorizeAsync(user, null, CleansePolicies.UserDirectory)).Succeeded)
+            {
+                return TypedResults.Forbid();
+            }
+
+            if (request.AssignTo is not null)
+            {
+                return TypedResults.Problem(title: "Invalid request", statusCode: 400,
+                    detail: "Supply userId or legacy assignTo, not both.");
+            }
+
+            var assigned = await dispatcher.SendAsync(new AssignKnownUserCommand(
+                ParseIssueId(id), request.UserId, request.TenantId, request.ClientId,
+                user.ToActor(), request.ExpectedVersion), cancellationToken);
+            return assigned.ToHttpResult();
+        }
+
+        if (request.TenantId is not null || request.ClientId is not null)
+        {
+            return TypedResults.Problem(title: "Invalid request", statusCode: 400,
+                detail: "The scoped assignment path requires an explicit userId (or null to unassign).");
+        }
+
         var result = await dispatcher.SendAsync(
             new AssignIssueCommand(ParseIssueId(id), request.AssignTo, user.ToActor(), request.ExpectedVersion),
             cancellationToken);

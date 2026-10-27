@@ -27,6 +27,7 @@ public static class SqliteStorageServiceCollectionExtensions
             new CleanseSqliteDatabase(provider.GetRequiredService<CleanseSqliteOptions>()));
 
         services.TryAddScoped<IIssueStore, SqliteIssueStore>();
+        services.TryAddScoped<IUserStore, SqliteUserStore>();
         services.TryAddScoped<IAuditStore, SqliteAuditStore>();
         services.TryAddScoped<IIssueHistoryStore, SqliteIssueHistoryStore>();
         services.TryAddScoped<IRuleRunStore, SqliteRuleRunStore>();

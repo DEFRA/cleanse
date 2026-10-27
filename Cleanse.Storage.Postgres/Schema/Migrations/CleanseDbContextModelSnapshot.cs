@@ -175,6 +175,10 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                         .HasColumnType("text")
                         .HasColumnName("blob_key");
 
+                    b.Property<string>("ClientId")
+                        .HasColumnType("text")
+                        .HasColumnName("client_id");
+
                     b.Property<DateTimeOffset>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
@@ -230,6 +234,10 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("status");
+
+                    b.Property<string>("TenantId")
+                        .HasColumnType("text")
+                        .HasColumnName("tenant_id");
 
                     b.Property<int>("TotalRows")
                         .HasColumnType("integer")
@@ -338,6 +346,14 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                         .HasColumnType("text")
                         .HasColumnName("assigned_to");
 
+                    b.Property<string>("AssignedUserFullName")
+                        .HasColumnType("text")
+                        .HasColumnName("assigned_user_full_name");
+
+                    b.Property<Guid?>("AssignedUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assigned_user_id");
+
                     b.Property<string>("Context")
                         .IsRequired()
                         .HasColumnType("jsonb")
@@ -409,6 +425,8 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                     b.HasIndex("AssignedTo")
                         .HasDatabaseName("ix_issues_assigned")
                         .HasFilter("assigned_to IS NOT NULL");
+
+                    b.HasIndex("AssignedUserId");
 
                     b.HasIndex("Context")
                         .HasDatabaseName("ix_issues_context");
@@ -545,6 +563,68 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Cleanse.Storage.Postgres.Schema.UserRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTimeOffset>("FirstLoggedInAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_logged_in_at_utc");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("Issuer")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("issuer");
+
+                    b.Property<DateTimeOffset>("LastLoggedInAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_logged_in_at_utc");
+
+                    b.Property<string>("ObjectId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("object_id");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Issuer", "ClientId", "Subject")
+                        .IsUnique()
+                        .HasDatabaseName("ux_users_identity");
+
+                    b.HasIndex("TenantId", "ClientId", "Id")
+                        .HasDatabaseName("ix_users_scope");
+
+                    b.ToTable("users", (string)null);
+                });
+
             modelBuilder.Entity("Cleanse.Storage.Postgres.Schema.ImportJobRejectionRow", b =>
                 {
                     b.HasOne("Cleanse.Storage.Postgres.Schema.ImportJobRow", null)
@@ -563,6 +643,14 @@ namespace Cleanse.Storage.Postgres.Schema.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_issue_history_issue");
+                });
+
+            modelBuilder.Entity("Cleanse.Storage.Postgres.Schema.IssueRow", b =>
+                {
+                    b.HasOne("Cleanse.Storage.Postgres.Schema.UserRow", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 #pragma warning restore 612, 618
         }

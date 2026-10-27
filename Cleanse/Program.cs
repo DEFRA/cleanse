@@ -63,7 +63,7 @@ static void ConfigureServices(WebApplicationBuilder builder)
     services.AddSingleton(warnings);
     ApplyCdpJwtDefaults(auth, warnings);
     services.AddCleanseAuthentication(auth, builder.Environment, warnings);
-    services.AddCleanseAuthorization(auth);
+    services.AddCleanseAuthorization(auth, builder.Environment);
 
     var storage = configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
     services.AddCleanseStorage(storage, builder.Environment);
@@ -154,6 +154,7 @@ static void ConfigureEndpoints(WebApplication app)
     var v1 = app.MapGroup("/v1").RequireAuthorization(CleansePolicies.Default);
 
     v1.MapIssueEndpoints();
+    v1.MapUserEndpoints();
     v1.MapRunEndpoints();
     v1.MapRuleEndpoints();
     v1.MapGroupEndpoints();

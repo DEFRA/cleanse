@@ -37,6 +37,26 @@ public abstract class ImportJobStoreContractTests
     }
 
     [Fact]
+    public async Task Assignment_scope_survives_storage_leasing_and_progress_updates()
+    {
+        var store = CreateStore();
+        var tenant = Guid.NewGuid().ToString();
+        var client = Guid.NewGuid().ToString();
+        var job = ImportJob.Create(Guid.NewGuid(), "scoped", "extract.csv", "imports/scoped.csv",
+            "service", 1, Night1, tenant, client);
+        Assert.True(await store.TryCreateAsync(job));
+        var leased = (await store.LeaseNextPendingAsync(Night1))!;
+        Assert.Equal(tenant, leased.TenantId);
+        Assert.Equal(client, leased.ClientId);
+        Assert.True(leased.RecordProgress(ImportJobCounters.Empty with { ProcessedRows = 1 }, Night1).IsSuccess);
+        await store.SaveAsync(leased);
+        Assert.Equal(leased.ToSnapshot(), (await store.GetAsync(job.Id))!.ToSnapshot());
+        var listed = Assert.Single((await store.SearchAsync("scoped", PageRequest.Default)).Items);
+        Assert.Equal(tenant, listed.TenantId);
+        Assert.Equal(client, listed.ClientId);
+    }
+
+    [Fact]
     public async Task A_created_job_round_trips_every_field()
     {
         var store = CreateStore();
