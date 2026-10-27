@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS issues (
     status                      TEXT    NOT NULL CHECK (status IN ('active', 'inactive')),
     workflow_status             TEXT    NOT NULL CHECK (workflow_status IN ('todo', 'in-progress', 'suppressed', 'resolved', 'ignored', 'nonactionable')),
     assigned_to                 TEXT        NULL,
+    assigned_user_id            TEXT        NULL REFERENCES users(id) ON DELETE RESTRICT,
+    assigned_user_full_name     TEXT        NULL,
     notes                       TEXT        NULL,
     external_notes              TEXT        NULL,
     priority                    TEXT        NULL CHECK (priority IS NULL OR priority IN ('low', 'medium', 'high')),
@@ -112,6 +114,8 @@ CREATE INDEX IF NOT EXISTS ix_issue_history_issue
     ON issue_history (issue_id, created_at_utc DESC, sequence DESC);
 
 CREATE TABLE IF NOT EXISTS import_jobs (
+    tenant_id              TEXT NULL,
+    client_id              TEXT NULL,
     id                     TEXT    NOT NULL PRIMARY KEY,
     group_id               TEXT    NOT NULL,
     file_name              TEXT    NOT NULL,
@@ -165,3 +169,16 @@ CREATE TABLE IF NOT EXISTS data_resets (
 );
 
 CREATE INDEX IF NOT EXISTS ix_data_resets_at ON data_resets (at_utc DESC);
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT NOT NULL PRIMARY KEY,
+    issuer TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    tenant_id TEXT NOT NULL,
+    object_id TEXT NOT NULL,
+    client_id TEXT NOT NULL,
+    full_name TEXT NOT NULL,
+    first_logged_in_at_utc TEXT NOT NULL,
+    last_logged_in_at_utc TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity ON users (issuer, client_id, subject);
+CREATE INDEX IF NOT EXISTS ix_users_scope ON users (tenant_id, client_id, id);

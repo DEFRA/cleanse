@@ -19,6 +19,7 @@ internal sealed class ApplyImportBatchCommandHandler(
     IIssueStore issues,
     IIssueHistoryStore history,
     IAuditStore audit,
+    IUserStore users,
     TimeProvider clock)
     : ICommandHandler<ApplyImportBatchCommand, ImportBatchResult>
 {
@@ -54,10 +55,27 @@ internal sealed class ApplyImportBatchCommandHandler(
         var existing = (await issues.GetManyAsync([.. rows.Select(r => r.IssueId)], cancellationToken))
             .ToDictionary(issue => issue.Id.Value, StringComparer.Ordinal);
 
-        var toSave = new List<Issue>(rows.Count);
         var auditEntries = new List<AuditEntry>();
         var historyEntries = new List<IssueHistoryEntry>();
         var rejections = new List<ImportJobRejection>();
+        var directory = new List<KnownUser>();
+        if (job.TenantId is not null && job.ClientId is not null)
+        {
+            for (var pageNumber = 1; ; pageNumber++)
+            {
+                var page = await users.SearchAsync(
+                    job.TenantId, job.ClientId, new PageRequest(pageNumber, PageRequest.MaxPageSize), cancellationToken);
+                directory.AddRange(page.Items.Where(user => !string.IsNullOrWhiteSpace(user.FullName)));
+                if ((long)pageNumber * PageRequest.MaxPageSize >= page.TotalCount)
+                {
+                    break;
+                }
+            }
+        }
+
+        var byName = directory.GroupBy(user => user.FullName.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var matched = 0;
 
         foreach (var row in rows)
         {
@@ -72,11 +90,48 @@ internal sealed class ApplyImportBatchCommandHandler(
                 continue;
             }
 
+            if (!string.Equals(issue.GroupId, job.GroupId, StringComparison.Ordinal))
+            {
+                rejections.Add(new ImportJobRejection(job.Id, row.RowNumber, row.IssueId.Value,
+                    ImportRejectionReasons.IssueNotFound, "No issue exists in the import group."));
+                continue;
+            }
+
+            matched++;
+            var expectedVersion = issue.Version;
+            if (row.HasAssignee)
+            {
+                var name = string.IsNullOrWhiteSpace(row.AssignedTo) ? null : row.AssignedTo.Trim();
+                byName.TryGetValue(name ?? string.Empty, out var candidates);
+                var assignment = candidates is { Length: 1 }
+                    ? issue.AssignKnownUser(candidates[0], now)
+                    : issue.AssignTo(name, now);
+                if (assignment.IsMaterial)
+                {
+                    auditEntries.Add(AuditEntry.ForIssue(issue.Id, assignment, command.Actor, now, job.Id.ToString()));
+                }
+
+                if (name is not null && candidates is not { Length: 1 })
+                {
+                    var reason = job.TenantId is null
+                        ? ImportRejectionReasons.AssigneeScopeMissing
+                        : candidates is { Length: > 1 }
+                            ? ImportRejectionReasons.AssigneeAmbiguous
+                            : ImportRejectionReasons.AssigneeUnmatched;
+                    rejections.Add(new ImportJobRejection(job.Id, row.RowNumber, row.IssueId.Value,
+                        reason, "Assignment warning: legacy assignee retained; no unique scoped known user was selected."));
+                }
+            }
+
             var change = issue.ApplyExternalState(row.ToState(), now);
             if (change.IsMaterial)
             {
                 auditEntries.Add(AuditEntry.ForIssue(issue.Id, change, command.Actor, now, job.Id.ToString()));
-                toSave.Add(issue);
+            }
+
+            if (issue.Version != expectedVersion && !await issues.SaveAsync(issue, expectedVersion, cancellationToken))
+            {
+                return DomainErrors.ConcurrencyConflict(issue.Id.Value, expectedVersion, expectedVersion + 1);
             }
 
             foreach (var contact in row.Contacts)
@@ -89,11 +144,6 @@ internal sealed class ApplyImportBatchCommandHandler(
                     command.Actor,
                     contact.AtUtc));
             }
-        }
-
-        if (toSave.Count > 0)
-        {
-            await issues.SaveBatchAsync(toSave, cancellationToken);
         }
 
         foreach (var entry in historyEntries)
@@ -111,13 +161,13 @@ internal sealed class ApplyImportBatchCommandHandler(
             await imports.AddRejectionsAsync(rejections, cancellationToken);
         }
 
-        var matched = rows.Count - rejections.Count;
+        var unmatched = rows.Count - matched;
         var progress = job.RecordProgress(
             ImportJobCounters.Empty with
             {
                 ProcessedRows = rows.Count,
                 Matched = matched,
-                Unmatched = rejections.Count
+                Unmatched = unmatched
             },
             now);
 
@@ -128,6 +178,6 @@ internal sealed class ApplyImportBatchCommandHandler(
 
         await imports.SaveAsync(job, cancellationToken);
 
-        return new ImportBatchResult(rows.Count, matched, rejections.Count, historyEntries.Count);
+        return new ImportBatchResult(rows.Count, matched, unmatched, historyEntries.Count);
     }
 }

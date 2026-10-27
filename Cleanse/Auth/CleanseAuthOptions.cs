@@ -10,6 +10,18 @@ public sealed class CleanseAuthOptions
     public JwtOptions Jwt { get; set; } = new();
 
     public ResetKeyOptions Reset { get; set; } = new();
+
+    public UserDirectoryAuthOptions UserDirectory { get; set; } = new();
+}
+
+public sealed class UserDirectoryAuthOptions
+{
+    /// <summary>
+    /// Local Docker only: explicitly trusts the configured machine API key for identity
+    /// attestation outside Development. Also requires ApiKey:ClientName to be cleanse-app.
+    /// Never enable on a deployed service.
+    /// </summary>
+    public bool AllowLocalApiKey { get; set; }
 }
 
 /// <summary>

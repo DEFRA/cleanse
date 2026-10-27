@@ -17,6 +17,7 @@ public static class ImportEndpoints
         group.MapPost(string.Empty, Upload)
             .WithName("UploadImport")
             .WithSummary("Upload an external extract for a group.")
+            .WithDescription("Optional multipart tenantId and clientId must both be nonempty GUIDs or both omitted. A unique exact trimmed full-name match within that scope assigns a known user; otherwise nonblank names remain legacy assignments with non-fatal warnings in the reconciliation report.")
             .Produces<ImportJobDto>(StatusCodes.Status202Accepted)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict)
@@ -34,7 +35,7 @@ public static class ImportEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
         group.MapGet("/{id:guid}/rejections", GetRejections)
             .WithName("GetImportRejections")
-            .WithSummary("Rows the import could not apply.")
+            .WithSummary("Rejected rows and non-fatal assignment warnings.")
             .Produces<PagedResult<ImportRejectionDto>>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
@@ -44,6 +45,8 @@ public static class ImportEndpoints
     private static async Task<IResult> Upload(
         IFormFile file,
         [FromForm] string groupId,
+        [FromForm] string? tenantId,
+        [FromForm] string? clientId,
         ClaimsPrincipal user,
         ICleanseDispatcher dispatcher,
         IImportFileStore files,
@@ -58,6 +61,14 @@ public static class ImportEndpoints
         if (string.IsNullOrWhiteSpace(groupId))
         {
             return Problem("A groupId is required.", StatusCodes.Status400BadRequest);
+        }
+
+        if ((tenantId is null) != (clientId is null) ||
+            (tenantId is not null &&
+             (!Guid.TryParse(tenantId, out var tenant) || tenant == Guid.Empty ||
+              !Guid.TryParse(clientId, out var client) || client == Guid.Empty)))
+        {
+            return Problem("tenantId and clientId must both be nonempty GUIDs, or both omitted.", 400);
         }
 
         if (file.Length > options.MaxUploadBytes)
@@ -92,7 +103,7 @@ public static class ImportEndpoints
 
         var result = await dispatcher.SendAsync(
             new CreateImportJobCommand(
-                jobId, groupId, file.FileName, blobKey, totalRows, user.ToActor()),
+                jobId, groupId, file.FileName, blobKey, totalRows, user.ToActor(), tenantId, clientId),
             cancellationToken);
 
         return result.ToHttpResult(job => TypedResults.Accepted($"/v1/imports/{job.Id}", job));

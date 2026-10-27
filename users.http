@@ -1,0 +1,97 @@
+@baseUrl = http://localhost:8085
+# Development only. Set from your local configuration; never put a real secret in this file.
+@apiKey = replace-with-local-development-key
+@tenantId = 11111111-1111-4111-8111-111111111111
+@clientId = 22222222-2222-4222-8222-222222222222
+@issueId = rule:example
+
+### Attest a validated login from the trusted frontend server, never from browser form input.
+# @name login
+POST {{baseUrl}}/v1/users/logins
+x-cleanse-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "issuer": "https://login.microsoftonline.com/{{tenantId}}/v2.0",
+  "subject": "validated-pairwise-subject",
+  "tenantId": "{{tenantId}}",
+  "objectId": "33333333-3333-4333-8333-333333333333",
+  "clientId": "{{clientId}}",
+  "fullName": "Alex Example"
+}
+
+### Directory page. The response has items, totalCount, pageNumber, pageSize and totalPages.
+GET {{baseUrl}}/v1/users?tenantId={{tenantId}}&clientId={{clientId}}&pageNumber=1&pageSize=50
+x-cleanse-api-key: {{apiKey}}
+
+### Invalid scope (400).
+GET {{baseUrl}}/v1/users?tenantId={{tenantId}}
+x-cleanse-api-key: {{apiKey}}
+
+### Fetch the current issue version before assignment; replace issueId with an existing issue.
+# @name issue
+GET {{baseUrl}}/v1/issues/{{issueId}}
+x-cleanse-api-key: {{apiKey}}
+
+### Stable assignment; unknown or wrong-scope users return 400, stale version returns 409.
+PUT {{baseUrl}}/v1/issues/{{issueId}}/assignee
+x-cleanse-api-key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "userId": "{{login.response.body.$.id}}",
+  "tenantId": "{{tenantId}}",
+  "clientId": "{{clientId}}",
+  "expectedVersion": {{issue.response.body.$.version}}
+}
+
+### Explicit stable-user unassignment. Refetch the issue to supply expectedVersion when desired.
+PUT {{baseUrl}}/v1/issues/{{issueId}}/assignee
+x-cleanse-api-key: {{apiKey}}
+Content-Type: application/json
+
+{"userId":null,"tenantId":"{{tenantId}}","clientId":"{{clientId}}"}
+
+### Compatible legacy assignment.
+PUT {{baseUrl}}/v1/issues/{{issueId}}/assignee
+x-cleanse-api-key: {{apiKey}}
+Content-Type: application/json
+
+{"assignTo":"Legacy assignee"}
+
+### Filter by stable known user.
+GET {{baseUrl}}/v1/issues?assignedUserId={{login.response.body.$.id}}&pageNumber=1&pageSize=50
+x-cleanse-api-key: {{apiKey}}
+
+### Unassigned means neither stable ID nor nonblank legacy name.
+GET {{baseUrl}}/v1/issues?unassigned=true
+x-cleanse-api-key: {{apiKey}}
+
+### Contradictory assignment filters (400).
+GET {{baseUrl}}/v1/issues?assignedUserId={{login.response.body.$.id}}&unassigned=true
+x-cleanse-api-key: {{apiKey}}
+
+### Scoped import; omit BOTH tenantId/clientId fields to preserve legacy-only assignment.
+POST {{baseUrl}}/v1/imports
+x-cleanse-api-key: {{apiKey}}
+Content-Type: multipart/form-data; boundary=example-boundary
+
+--example-boundary
+Content-Disposition: form-data; name="groupId"
+
+cts-sam
+--example-boundary
+Content-Disposition: form-data; name="tenantId"
+
+{{tenantId}}
+--example-boundary
+Content-Disposition: form-data; name="clientId"
+
+{{clientId}}
+--example-boundary
+Content-Disposition: form-data; name="file"; filename="example.csv"
+Content-Type: text/csv
+
+CPH,Rule No,Status,Notes,Priority,Date Received,Assigned to
+01/001/0001,2,New,,Low,,Alex Example
+--example-boundary--

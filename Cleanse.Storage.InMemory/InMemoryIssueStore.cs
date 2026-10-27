@@ -250,7 +250,13 @@ public sealed class InMemoryIssueStore : IIssueStore
             return false;
         }
 
-        if (filter.Unassigned is { } unassigned && string.IsNullOrEmpty(snapshot.AssignedTo) != unassigned)
+        if (filter.AssignedUserId is { } userId && snapshot.AssignedUserId != userId)
+        {
+            return false;
+        }
+
+        if (filter.Unassigned is { } unassigned &&
+            (snapshot.AssignedUserId is null && string.IsNullOrWhiteSpace(snapshot.AssignedTo)) != unassigned)
         {
             return false;
         }

@@ -34,6 +34,20 @@ public class SpolCsvTests
         $"{first},{second},{third},{letter},\"{notes}\",{complete}";
 
     [Fact]
+    public void Duplicate_winner_carries_its_assignee_and_headers_are_case_insensitive()
+    {
+        var text = string.Join("\n", Header.Replace("Assigned to", "ASSIGNED TO", StringComparison.Ordinal),
+            Row("assignment", "1", "New").Replace("a@b.gov.uk", "First Person", StringComparison.Ordinal),
+            Row("assignment", "1", "Completed").Replace("a@b.gov.uk", "  Winner Person  ", StringComparison.Ordinal));
+        using var csv = new MemoryStream(Encoding.UTF8.GetBytes(text));
+        var batch = SpolRowMapper.Project(SpolCsvReader.Read(csv, "group"));
+        var winner = Assert.Single(batch.Rows);
+        Assert.True(winner.HasAssignee);
+        Assert.Equal("Winner Person", winner.AssignedTo);
+        Assert.Equal(1, batch.DuplicatesCollapsed);
+    }
+
+    [Fact]
     public void The_header_is_validated_before_anything_is_stored()
     {
         var valid = Csv(Row("01/036/8000", "1", "Completed"));

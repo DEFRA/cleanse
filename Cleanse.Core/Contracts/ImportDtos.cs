@@ -17,6 +17,10 @@ public sealed record ExternalIssueRow
 
     public string? ExternalNotes { get; init; }
 
+    public bool HasAssignee { get; init; }
+
+    public string? AssignedTo { get; init; }
+
     public IssuePriority? Priority { get; init; }
 
     public DateTimeOffset? ReceivedAtUtc { get; init; }

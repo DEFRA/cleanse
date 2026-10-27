@@ -120,8 +120,8 @@ flowchart LR
 
 ### Request flow
 
-Endpoints do no business logic. Each one binds its request, lifts the `Actor` out of the claims
-principal, and dispatches a command or query:
+Endpoints do no business logic. Issue endpoints bind their request, lift the `Actor` out of the
+claims principal, and dispatch a command or query:
 
 1. Endpoint builds an `ICommand<TResult>` or `IQuery<TResult>`.
 2. `CleanseDispatcher` resolves the matching handler through a cached generic invoker, so no
@@ -130,6 +130,8 @@ principal, and dispatches a command or query:
 4. The endpoint maps the result to a status code (`200`, `201`, `202`, `400`, `404`, `409`, `413`).
 
 Mutations take an `ExpectedVersion` and return `409 Conflict` on a mismatch.
+The user directory uses `IUserDirectory` for validation, server timestamps and DTO mapping,
+over the same storage-port boundary.
 
 ## API
 
@@ -152,6 +154,91 @@ Two schemes sit behind a policy scheme that picks per request:
 If neither is configured a deny-all handler is registered, so an unconfigured deployment fails
 closed rather than open.
 
+### Known users and stable assignments
+
+The backend does not authenticate browser Entra tokens or call Microsoft Graph. `cleanse-app`
+must validate its Entra OIDC login (including signature, issuer, audience, nonce and tenant),
+then attest the identity below using its **CDP service-to-service credential**, not the user's
+Entra token. Entra enterprise-application assignment controls eligibility; directory membership
+only means the user has logged in, not that they still have access.
+
+Both user endpoints and the stable-user assignment path additionally require the authenticated
+service name **`cleanse-app`**, even when the general service allow-list is empty. The normal
+allow-list must also permit that service. In **Development only**, the existing
+`x-cleanse-api-key` is accepted instead. This is a shared-secret trust boundary: **any local key
+holder can attest arbitrary identity claims**, not just the frontend. Do not expose the key to
+the browser, run this local mode against production data, or treat a supplied `ClientName` as
+proof of frontend identity. API-key callers outside Development are denied these operations
+unless the explicit **local Docker only** exception below is enabled.
+Existing legacy issue assignment remains available under its original authorization policy.
+
+The local Docker stack intentionally uses Production settings to exercise PostgreSQL/S3 without
+loading developer settings. Because it cannot obtain CDP STS tokens, `compose.yml` explicitly sets
+`Auth__UserDirectory__AllowLocalApiKey=true` and `Auth__ApiKey__ClientName=cleanse-app`.
+Both settings are required for API-key directory access outside Development; the exception
+defaults to **false**, and setting the client name alone does not enable it. A frontend-owned
+local backend Compose service must set these same two environment variables, plus its existing
+`Auth__ApiKey__Key=local-development-key`. No environment or storage-mode change is needed.
+**Never enable `AllowLocalApiKey` in CDP or any deployed environment.** It trusts possession of
+the configured key, not an independently proven service identity, and is suitable only for an
+isolated local stack. This does not change the default production STS policy.
+
+| Method | Route | Success |
+| --- | --- | --- |
+| `POST` | `/v1/users/logins` | `200` with the inserted or updated known user. |
+| `GET` | `/v1/users?tenantId=...&clientId=...&pageNumber=1&pageSize=50` | `200` with a scoped standard page. |
+
+Login input is `{issuer,subject,tenantId,objectId,clientId,fullName}` (all required strings).
+Maximum lengths are respectively **512, 256, 64, 64, 64 and 256** characters; blank values fail
+with `400`. Identity strings are exact and case-sensitive, never display-name keys.
+The server generates a GUID `id` and UTC timestamps; unknown input fields cannot override them:
+
+```json
+{
+  "id": "6f3a90c2-7800-46ca-8b90-2476ee23fe6d",
+  "issuer": "https://login.microsoftonline.com/tenant/v2.0",
+  "subject": "pairwise-subject",
+  "tenantId": "tenant",
+  "objectId": "object",
+  "clientId": "client",
+  "fullName": "Alex Example",
+  "firstLoggedInAtUtc": "2026-10-27T06:00:00+00:00",
+  "lastLoggedInAtUtc": "2026-10-27T06:00:00+00:00"
+}
+```
+
+The atomic identity key is **`(issuer,clientId,subject)`**. Relogin retains `id` and
+`firstLoggedInAtUtc`, refreshes tenant/object/name and advances `lastLoggedInAtUtc` without moving
+it backwards. PostgreSQL and file-backed SQLite persist this across restarts. The explicitly
+in-memory provider remains ephemeral. Global and group issue resets never delete users.
+
+Directory queries require exact `tenantId` and `clientId`. The response is
+`{items,totalCount,pageNumber,pageSize,totalPages}`; `items` contains the user shape above, ordered
+by stable user ID. Defaults are page 1 and size 50, maximum size 500. `page` is an alias for
+`pageNumber`; conflicting aliases or invalid/overflowing paging return `400`.
+
+The existing `PUT /v1/issues/{id}/assignee` accepts either:
+
+```json
+{"userId":"6f3a90c2-7800-46ca-8b90-2476ee23fe6d","tenantId":"tenant","clientId":"client","expectedVersion":1}
+```
+
+or legacy `{"assignTo":"legacy text","expectedVersion":1}`. Stable assignment validates that the
+GUID is already known in the supplied exact tenant/client scope; unknown or wrong-scope users
+return `400` without changing the issue. Both scope fields are also required when `userId` is
+explicitly `null` to unassign. Do not mix non-null `assignTo` with `userId`. A scoped request
+without an explicit `userId` is rejected rather than treated as legacy unassignment.
+
+Issue responses add nullable `assignedUserId` and `assignedUserFullName`, persisted separately
+from legacy `assignedTo`. Stable assignment resolves `assignedTo` and `assignedUserFullName` to
+the known user's full name **at assignment time**. Names are display snapshots, not identity;
+a later relogin does not rewrite existing issues. Legacy assignment clears the stable-user
+fields. Both paths retain optimistic concurrency (`409` on a stale `expectedVersion`),
+material-change-only audit/version updates, and preservation across rule re-detection.
+See [users.http](users.http) for local requests. Apply Liquibase changeset
+`0006-known-users-and-assignments` before deploying; the service never migrates Aurora at startup.
+SQLite adds the nullable assignment columns to existing local databases during initialization.
+
 ### Issues
 
 | Method | Route | Purpose |
@@ -166,6 +253,13 @@ closed rather than open.
 | `GET` | `/v1/issues/{id}/audit` | System change log. |
 | `GET` | `/v1/issues/{id}/history` | Human case actions. |
 | `POST` | `/v1/issues/{id}/history` | Record a case action. |
+
+Use `GET /v1/issues?assignedUserId=<guid>` to filter by a stable known-user ID, or
+`?unassigned=true` for issues with neither a stable user nor nonblank legacy `assignedTo`.
+Legacy text-only assignments remain assigned. With neither filter (or `unassigned=false`),
+all assignments are included. Invalid/empty GUIDs, invalid booleans and `unassigned=true`
+combined with `assignedUserId` or nonblank `assignedTo` return `400`. Other filters and paging
+compose normally; legacy `assignedTo` text filtering remains supported.
 
 Because issue IDs are derived by hashing, they contain only unreserved URL characters and need no
 escaping in a route — see
@@ -264,15 +358,32 @@ pipeline mirrors that state onto issues so the two can be reconciled.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/v1/imports` | Upload a SPOL CSV extract (multipart `file` + `groupId`). Returns `202` with a job to poll. |
+| `POST` | `/v1/imports` | Upload a SPOL CSV extract (multipart `file` + `groupId`, optional paired `tenantId` + `clientId`). Returns `202` with a job to poll. |
 | `GET` | `/v1/imports` | List imports, newest first, optionally filtered by group. |
 | `GET` | `/v1/imports/{id}` | Status and progress counters. |
-| `GET` | `/v1/imports/{id}/rejections` | Rows the import could not apply, and why. |
+| `GET` | `/v1/imports/{id}/rejections` | Rejected rows and non-fatal assignment warnings, with reason codes. |
 
 The extract must carry the columns `CPH`, `Rule No`, `Status`, `Notes`, `Priority` and
 `Date Received`; contact columns (`1st`/`2nd`/`3rd Contact Date`, `Letter/email sent`) become
 `PhoneCall` and `LetterSent` history entries. The header is validated before a single byte is
 persisted.
+
+When the optional `Assigned to` column is present, blank cells clear both legacy and stable
+assignment. Nonblank cells are compared after trimming against known users' trimmed full names
+using ordinal case-insensitive equality (no fuzzy/email matching). Exactly one named user within
+the supplied tenant **and** client scope receives stable assignment. Both scope fields must be
+nonempty GUIDs or both omitted; invalid/partial scopes return `400` before file storage. Scope is
+persisted with the job, so background workers never infer it or match across tenants/apps.
+
+Nonblank unmatched or ambiguous names retain readable trimmed legacy `assignedTo` and clear any
+previous stable user ID/name. The report uses `assignee_unmatched`, `assignee_ambiguous` or
+`assignee_scope_missing` (scope omitted) with safe generic details, never names in warning
+details/logs. These warnings do **not** reject the issue's other updates, increment `unmatched`,
+or fail the job. Report totals count warning/rejection entries, not rejected issues. Missing
+`Assigned to` columns preserve existing assignments for compatibility. Duplicate-row collapse
+uses the winning row's assignee; repeating unchanged imports does not change issue versions or
+duplicate contact history. Issue writes use optimistic version checks to avoid overwriting
+concurrent caseworker edits.
 
 Processing is asynchronous. `ImportProcessorService` leases the next `Pending` job atomically,
 streams the file from the blob store in batches, applies rows through the dispatcher, and

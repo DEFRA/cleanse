@@ -21,6 +21,7 @@ public static class InMemoryStorageServiceCollectionExtensions
         services.TryAddSingleton<InMemoryImportJobStore>();
         services.TryAddSingleton<InMemoryImportFileStore>();
         services.TryAddSingleton<InMemoryDataResetStore>();
+        services.TryAddSingleton<IUserStore, InMemoryUserStore>();
 
         services.TryAddSingleton<IIssueStore>(sp => sp.GetRequiredService<InMemoryIssueStore>());
         services.TryAddSingleton<IAuditStore>(sp => sp.GetRequiredService<InMemoryAuditStore>());

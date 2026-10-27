@@ -45,6 +45,69 @@ public sealed class CleanseSqliteDatabase : IAsyncDisposable
         await using var command = connection.CreateCommand();
         command.CommandText = ReadSchemaScript();
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await UpgradeUserAssignmentAsync(connection, cancellationToken);
+        await UpgradeImportScopeAsync(connection, cancellationToken);
+    }
+
+    private static async Task UpgradeImportScopeAsync(
+        SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        var columns = new HashSet<string>(StringComparer.Ordinal);
+        await using (var inspect = connection.CreateCommand())
+        {
+            inspect.CommandText = "PRAGMA table_info(import_jobs)";
+            await using var reader = await inspect.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        foreach (var column in new[] { "tenant_id", "client_id" })
+        {
+            if (!columns.Contains(column))
+            {
+                await using var alter = connection.CreateCommand();
+                alter.CommandText = $"ALTER TABLE import_jobs ADD COLUMN {column} TEXT NULL";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+    }
+
+    private static async Task UpgradeUserAssignmentAsync(
+        SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        // Existing local databases predate stable-user assignment. CREATE TABLE IF NOT EXISTS
+        // deliberately leaves those tables alone, so add only the two new nullable columns.
+        await using var transaction = connection.BeginTransaction();
+        var columns = new HashSet<string>(StringComparer.Ordinal);
+        await using (var inspect = connection.CreateCommand())
+        {
+            inspect.Transaction = transaction;
+            inspect.CommandText = "PRAGMA table_info(issues)";
+            await using var reader = await inspect.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        foreach (var (name, definition) in new[]
+        {
+            ("assigned_user_id", "TEXT NULL REFERENCES users(id) ON DELETE RESTRICT"),
+            ("assigned_user_full_name", "TEXT NULL")
+        })
+        {
+            if (!columns.Contains(name))
+            {
+                await using var alter = connection.CreateCommand();
+                alter.Transaction = transaction;
+                alter.CommandText = $"ALTER TABLE issues ADD COLUMN {name} {definition}";
+                await alter.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken);
     }
 
     private async Task ApplyPragmasAsync(SqliteConnection connection, CancellationToken cancellationToken)

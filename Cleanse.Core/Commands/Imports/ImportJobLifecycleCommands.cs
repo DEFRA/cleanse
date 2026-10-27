@@ -15,7 +15,9 @@ public sealed record CreateImportJobCommand(
     string FileName,
     string BlobKey,
     int TotalRows,
-    Actor Actor) : ICommand<ImportJobDto>;
+    Actor Actor,
+    string? TenantId = null,
+    string? ClientId = null) : ICommand<ImportJobDto>;
 
 internal sealed class CreateImportJobCommandHandler(IImportJobStore imports, TimeProvider clock)
     : ICommandHandler<CreateImportJobCommand, ImportJobDto>
@@ -32,6 +34,14 @@ internal sealed class CreateImportJobCommandHandler(IImportJobStore imports, Tim
             return DomainErrors.Validation("An import must be scoped to a group.");
         }
 
+        if ((command.TenantId is null) != (command.ClientId is null) ||
+            (command.TenantId is not null &&
+             (!Guid.TryParse(command.TenantId, out var tenant) || tenant == Guid.Empty ||
+              !Guid.TryParse(command.ClientId, out var client) || client == Guid.Empty)))
+        {
+            return DomainErrors.Validation("tenantId and clientId must both be nonempty GUIDs, or both omitted.");
+        }
+
         var inFlight = await imports.GetActiveForGroupAsync(command.GroupId.Trim(), cancellationToken);
         if (inFlight is not null)
         {
@@ -45,7 +55,9 @@ internal sealed class CreateImportJobCommandHandler(IImportJobStore imports, Tim
             command.BlobKey,
             command.Actor.Id,
             command.TotalRows,
-            clock.GetUtcNow());
+            clock.GetUtcNow(),
+            command.TenantId is null ? null : Guid.Parse(command.TenantId).ToString(),
+            command.ClientId is null ? null : Guid.Parse(command.ClientId).ToString());
 
         // The unique index is the real guard; the check above only gives a better error message.
         if (!await imports.TryCreateAsync(job, cancellationToken))

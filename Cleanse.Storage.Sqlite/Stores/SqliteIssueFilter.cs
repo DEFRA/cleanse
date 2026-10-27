@@ -13,6 +13,9 @@ namespace Cleanse.Storage.Sqlite.Stores;
 /// </summary>
 internal static class SqliteIssueFilter
 {
+    private static readonly string Whitespace = string.Concat(
+        Enumerable.Range(char.MinValue, char.MaxValue + 1).Select(value => (char)value).Where(char.IsWhiteSpace));
+
     internal sealed record Clause(string Sql, IReadOnlyList<(string Name, object Value)> Parameters)
     {
         public void Bind(SqliteCommand command)
@@ -75,11 +78,17 @@ internal static class SqliteIssueFilter
             Add("LOWER(assigned_to) = LOWER($f_assignee)", "$f_assignee", assignee);
         }
 
+        if (filter.AssignedUserId is { } userId)
+        {
+            Add("assigned_user_id = $f_user", "$f_user", userId.ToString());
+        }
+
         if (filter.Unassigned is { } unassigned)
         {
+            parameters.Add(("$f_whitespace", Whitespace));
             predicates.Add(unassigned
-                ? "(assigned_to IS NULL OR assigned_to = '')"
-                : "(assigned_to IS NOT NULL AND assigned_to <> '')");
+                ? "(assigned_user_id IS NULL AND (assigned_to IS NULL OR TRIM(assigned_to, $f_whitespace) = ''))"
+                : "(assigned_user_id IS NOT NULL OR TRIM(assigned_to, $f_whitespace) <> '')");
         }
 
         if (filter.CreatedAfterUtc is { } createdAfter)

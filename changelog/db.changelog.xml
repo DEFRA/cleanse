@@ -74,4 +74,20 @@
                  stripComments="false"/>
     </changeSet>
 
+    <changeSet id="0006-known-users-and-assignments" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Persistent login directory and stable-user issue assignments, retained by issue resets.</comment>
+        <sqlFile path="sql/0006_known_users_and_assignments.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
+    <changeSet id="0007-import-assignment-scope" author="cleanse" runOnChange="false" runInTransaction="false">
+        <comment>Persist tenant and client scope for background import assignment matching.</comment>
+        <sqlFile path="sql/0007_import_assignment_scope.sql"
+                 relativeToChangelogFile="true"
+                 splitStatements="false"
+                 stripComments="false"/>
+    </changeSet>
+
 </databaseChangeLog>

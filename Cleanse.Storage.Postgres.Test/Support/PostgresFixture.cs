@@ -128,7 +128,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         await using var command = _owner!.CreateCommand(
             "TRUNCATE TABLE issue_history, audit_entries, issues, rule_runs, " +
-            "import_job_rejections, import_jobs, data_resets RESTART IDENTITY CASCADE");
+            "import_job_rejections, import_jobs, data_resets, users RESTART IDENTITY CASCADE");
         await command.ExecuteNonQueryAsync();
     }
 

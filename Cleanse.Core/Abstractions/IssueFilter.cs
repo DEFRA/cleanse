@@ -35,6 +35,8 @@ public sealed record IssueFilter
 
     public string? AssignedTo { get; init; }
 
+    public Guid? AssignedUserId { get; init; }
+
     public bool? Unassigned { get; init; }
 
     /// <summary>All pairs must match for an issue to be returned.</summary>

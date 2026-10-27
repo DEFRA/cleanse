@@ -10,7 +10,7 @@ internal sealed class SqliteImportJobStore(CleanseSqliteDatabase database) : IIm
     private const string Columns =
         "id, group_id, file_name, blob_key, status, total_rows, processed_rows, matched, " +
         "unmatched, duplicates_collapsed, invalid, requested_by, created_at_utc, started_at_utc, " +
-        "finished_at_utc, heartbeat_at_utc, failure_reason, version";
+        "finished_at_utc, heartbeat_at_utc, failure_reason, version, tenant_id, client_id";
 
     public async Task<ImportJob?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -34,7 +34,7 @@ internal sealed class SqliteImportJobStore(CleanseSqliteDatabase database) : IIm
             VALUES ($id, $group_id, $file_name, $blob_key, $status, $total_rows, $processed_rows,
                     $matched, $unmatched, $duplicates_collapsed, $invalid, $requested_by,
                     $created_at_utc, $started_at_utc, $finished_at_utc, $heartbeat_at_utc,
-                    $failure_reason, $version)
+                    $failure_reason, $version, $tenant_id, $client_id)
             """;
         Bind(command, job.ToSnapshot());
 
@@ -287,11 +287,15 @@ internal sealed class SqliteImportJobStore(CleanseSqliteDatabase database) : IIm
         reader.IsDBNull(14) ? null : SqliteMappings.ToTimestamp(reader.GetString(14)),
         reader.IsDBNull(15) ? null : SqliteMappings.ToTimestamp(reader.GetString(15)),
         reader.IsDBNull(16) ? null : reader.GetString(16),
-        reader.GetInt32(17)));
+        reader.GetInt32(17),
+        reader.IsDBNull(18) ? null : reader.GetString(18),
+        reader.IsDBNull(19) ? null : reader.GetString(19)));
 
     private static void Bind(SqliteCommand command, ImportJobSnapshot snapshot)
     {
         command.Bind("$id", snapshot.Id.ToString());
+        command.Bind("$tenant_id", snapshot.TenantId);
+        command.Bind("$client_id", snapshot.ClientId);
         command.Bind("$group_id", snapshot.GroupId);
         command.Bind("$file_name", snapshot.FileName);
         command.Bind("$blob_key", snapshot.BlobKey);

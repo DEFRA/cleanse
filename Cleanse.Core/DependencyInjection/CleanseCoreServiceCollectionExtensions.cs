@@ -12,6 +12,7 @@ using Cleanse.Core.Queries.History;
 using Cleanse.Core.Queries.Imports;
 using Cleanse.Core.Queries.Issues;
 using Cleanse.Core.Queries.Runs;
+using Cleanse.Core.Users;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -38,6 +39,7 @@ public static class CleanseCoreServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddTransient<ICleanseDispatcher, CleanseDispatcher>();
         services.TryAddTransient<IssueMutator>();
+        services.TryAddTransient<IUserDirectory, UserDirectory>();
 
         AddCommand<StartRunCommand, RuleRunDto, StartRunCommandHandler>(services);
         AddCommand<CompleteRunCommand, RuleRunDto, CompleteRunCommandHandler>(services);
@@ -50,6 +52,7 @@ public static class CleanseCoreServiceCollectionExtensions
 
         AddCommand<UpsertDetectionsCommand, DetectionUpsertResult, UpsertDetectionsCommandHandler>(services);
         AddCommand<AssignIssueCommand, IssueDto, AssignIssueCommandHandler>(services);
+        AddCommand<AssignKnownUserCommand, IssueDto, AssignKnownUserCommandHandler>(services);
         AddCommand<SetIssueNotesCommand, IssueDto, SetIssueNotesCommandHandler>(services);
         AddCommand<SetIssuePriorityCommand, IssueDto, SetIssuePriorityCommandHandler>(services);
         AddCommand<SetIssueWorkflowStatusCommand, IssueDto, SetIssueWorkflowStatusCommandHandler>(services);

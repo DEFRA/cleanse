@@ -100,7 +100,10 @@ services:
       # this stack unchanged, including its admin reset page. The rules engine stays off unless
       # compose.krds.yml is layered on top.
       Auth__ApiKey__Key: local-development-key
-      Auth__ApiKey__ClientName: local-developer
+      Auth__ApiKey__ClientName: cleanse-app
+      # Explicit local-only exception: this stack uses Production settings but has no CDP STS.
+      # Never enable in deployed environments. ClientName alone does not grant this access.
+      Auth__UserDirectory__AllowLocalApiKey: 'true'
       Auth__Reset__Key: local-development-reset-key
     healthcheck:
       test: ['CMD-SHELL', 'curl -fsS http://localhost:8085/health || exit 1']

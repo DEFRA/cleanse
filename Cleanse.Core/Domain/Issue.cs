@@ -26,7 +26,9 @@ public sealed class Issue
         DateTimeOffset updatedAtUtc,
         DateTimeOffset activatedAtUtc,
         DateTimeOffset? deactivatedAtUtc,
-        int version)
+        int version,
+        Guid? assignedUserId = null,
+        string? assignedUserFullName = null)
     {
         Id = id;
         GroupId = groupId;
@@ -35,6 +37,8 @@ public sealed class Issue
         Status = status;
         WorkflowStatus = workflowStatus;
         AssignedTo = assignedTo;
+        AssignedUserId = assignedUserId;
+        AssignedUserFullName = assignedUserFullName;
         Notes = notes;
         ExternalNotes = externalNotes;
         Priority = priority;
@@ -61,6 +65,11 @@ public sealed class Issue
     public WorkflowStatus WorkflowStatus { get; private set; }
 
     public string? AssignedTo { get; private set; }
+
+    public Guid? AssignedUserId { get; private set; }
+
+    /// <summary>The known user's display name at assignment time; never an identity key.</summary>
+    public string? AssignedUserFullName { get; private set; }
 
     public string? Notes { get; private set; }
 
@@ -149,7 +158,9 @@ public sealed class Issue
             snapshot.UpdatedAtUtc,
             snapshot.ActivatedAtUtc,
             snapshot.DeactivatedAtUtc,
-            snapshot.Version);
+            snapshot.Version,
+            snapshot.AssignedUserId,
+            snapshot.AssignedUserFullName);
     }
 
     public IssueSnapshot ToSnapshot() => new(
@@ -170,7 +181,9 @@ public sealed class Issue
         UpdatedAtUtc,
         ActivatedAtUtc,
         DeactivatedAtUtc,
-        Version);
+        Version,
+        AssignedUserId,
+        AssignedUserFullName);
 
     /// <summary>
     /// Re-detection by a later run. Touches only the run id, the active flag and the context;
@@ -224,17 +237,35 @@ public sealed class Issue
         return Apply(AuditEventKind.IssueDeactivated, [change, deactivated], now);
     }
 
-    public IssueChange AssignTo(string? assignee, DateTimeOffset now)
+    public IssueChange AssignTo(string? assignee, DateTimeOffset now) =>
+        Assign(assignee, null, null, now);
+
+    public IssueChange AssignKnownUser(KnownUser? user, DateTimeOffset now) =>
+        Assign(user?.FullName, user?.Id, user?.FullName, now);
+
+    private IssueChange Assign(string? assignee, Guid? userId, string? fullName, DateTimeOffset now)
     {
         var normalised = string.IsNullOrWhiteSpace(assignee) ? null : assignee.Trim();
-        if (string.Equals(normalised, AssignedTo, StringComparison.Ordinal))
+        var changes = new List<AuditChange>();
+        if (!string.Equals(normalised, AssignedTo, StringComparison.Ordinal))
         {
-            return IssueChange.None;
+            changes.Add(new AuditChange(nameof(AssignedTo), AssignedTo, normalised));
         }
 
-        var change = new AuditChange(nameof(AssignedTo), AssignedTo, normalised);
+        if (AssignedUserId != userId)
+        {
+            changes.Add(new AuditChange(nameof(AssignedUserId), AssignedUserId?.ToString(), userId?.ToString()));
+        }
+
+        if (!string.Equals(AssignedUserFullName, fullName, StringComparison.Ordinal))
+        {
+            changes.Add(new AuditChange(nameof(AssignedUserFullName), AssignedUserFullName, fullName));
+        }
+
         AssignedTo = normalised;
-        return Apply(AuditEventKind.IssueAssigned, [change], now);
+        AssignedUserId = userId;
+        AssignedUserFullName = fullName;
+        return Apply(AuditEventKind.IssueAssigned, changes, now);
     }
 
     public IssueChange SetNotes(string? notes, DateTimeOffset now)

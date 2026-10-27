@@ -10,7 +10,8 @@ internal sealed class SqliteIssueStore(CleanseSqliteDatabase database, CleanseSq
     private const string Columns =
         "id, group_id, rule_id, run_id, status, workflow_status, assigned_to, notes, " +
         "external_notes, priority, external_received_at_utc, suppression_expires_at_utc, " +
-        "context, created_at_utc, updated_at_utc, activated_at_utc, deactivated_at_utc, version";
+        "context, created_at_utc, updated_at_utc, activated_at_utc, deactivated_at_utc, version, " +
+        "assigned_user_id, assigned_user_full_name";
 
     private const string UpsertAssignments = """
             group_id = excluded.group_id,
@@ -19,6 +20,8 @@ internal sealed class SqliteIssueStore(CleanseSqliteDatabase database, CleanseSq
             status = excluded.status,
             workflow_status = excluded.workflow_status,
             assigned_to = excluded.assigned_to,
+            assigned_user_id = excluded.assigned_user_id,
+            assigned_user_full_name = excluded.assigned_user_full_name,
             notes = excluded.notes,
             external_notes = excluded.external_notes,
             priority = excluded.priority,
@@ -96,7 +99,7 @@ internal sealed class SqliteIssueStore(CleanseSqliteDatabase database, CleanseSq
             VALUES ($id, $group_id, $rule_id, $run_id, $status, $workflow_status, $assigned_to, $notes,
                     $external_notes, $priority, $external_received_at_utc, $suppression_expires_at_utc,
                         $context, $created_at_utc, $updated_at_utc, $activated_at_utc,
-                        $deactivated_at_utc, $version)
+                        $deactivated_at_utc, $version, $assigned_user_id, $assigned_user_full_name)
             ON CONFLICT (id) DO UPDATE SET
             {UpsertAssignments}
             {guard}
@@ -135,7 +138,7 @@ internal sealed class SqliteIssueStore(CleanseSqliteDatabase database, CleanseSq
                 VALUES ($id, $group_id, $rule_id, $run_id, $status, $workflow_status, $assigned_to, $notes,
                         $external_notes, $priority, $external_received_at_utc, $suppression_expires_at_utc,
                         $context, $created_at_utc, $updated_at_utc, $activated_at_utc,
-                        $deactivated_at_utc, $version)
+                        $deactivated_at_utc, $version, $assigned_user_id, $assigned_user_full_name)
                 ON CONFLICT (id) DO UPDATE SET
                 {UpsertAssignments}
                 """;
@@ -298,6 +301,8 @@ internal sealed class SqliteIssueStore(CleanseSqliteDatabase database, CleanseSq
         command.Bind("$status", snapshot.Status.ToWire());
         command.Bind("$workflow_status", snapshot.WorkflowStatus.ToWire());
         command.Bind("$assigned_to", snapshot.AssignedTo);
+        command.Bind("$assigned_user_id", snapshot.AssignedUserId?.ToString());
+        command.Bind("$assigned_user_full_name", snapshot.AssignedUserFullName);
         command.Bind("$notes", snapshot.Notes);
         command.Bind("$external_notes", snapshot.ExternalNotes);
         command.Bind("$priority", snapshot.Priority?.ToWire());

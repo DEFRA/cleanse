@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Cleanse.Core.Domain;
 
 namespace Cleanse.Api.Contracts;
@@ -7,7 +8,27 @@ namespace Cleanse.Api.Contracts;
 /// The actor is taken from the authenticated caller, never from the request body, so a caller
 /// cannot attribute their change to somebody else.
 /// </summary>
-public sealed record AssignIssueRequest(string? AssignTo, int? ExpectedVersion);
+public sealed record AssignIssueRequest(string? AssignTo, int? ExpectedVersion)
+{
+    private Guid? _userId;
+
+    public Guid? UserId
+    {
+        get => _userId;
+        init
+        {
+            _userId = value;
+            HasUserId = true;
+        }
+    }
+
+    public string? TenantId { get; init; }
+
+    public string? ClientId { get; init; }
+
+    [JsonIgnore]
+    public bool HasUserId { get; private init; }
+}
 
 public sealed record SetNotesRequest(string? Notes, int? ExpectedVersion);
 
